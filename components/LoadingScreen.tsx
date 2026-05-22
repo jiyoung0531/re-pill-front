@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ActivityIndicator,
   Dimensions,
@@ -10,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface LoadingScreenProps {
@@ -35,20 +37,9 @@ export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
     return () => clearTimeout(timer);
   }, []);
 
-  // ⭐️ [여기에 추가됨!] 버튼 누르면 바로 무조건 통과하는 임시 로그인 함수
   const handleLogin = () => {
-    router.replace("/main");
-    {
-      /*if (!id.trim() || !password.trim()) {
-      Alert.alert("알림", "아이디와 비밀번호를 모두 입력해주세요.");
-      return;
-    }
-
-    // 성공 팝업 띄우고 메인(app/main.tsx)으로 쏴주기
-    Alert.alert("성공", `${id}님, 환영합니다!`);
     if (onLoginSuccess) {
       onLoginSuccess();
-    }*/
     }
   };
 
@@ -62,23 +53,29 @@ export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
     );
   }
 
-  // 2단계: 시안 완벽 반영 로그인 랜딩 화면
+  // 2단계: 대각선 그라데이션 및 입체 레이어 로그인 화면
   return (
-    <View style={styles.landingContainer}>
-      {/* 상단 레이어: 연민트 배경 + 로고와 글씨 배치 */}
+    <LinearGradient
+      colors={['#BBE6E8', '#FFEB8D']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.landingContainer}
+    >
+      {/* 바탕색을 투명하게 비춰주는 상단 로고 영역 */}
       <View style={styles.landingHeader}>
         <Image source={logoImg} style={styles.actualLogoImage} />
         <Image source={logoTextImg} style={styles.actualLogoText} />
       </View>
 
-      {/* 캐릭터 독립 레이어 배치: 아치선 경계에 완벽히 겹치도록 분리 */}
-      <View style={styles.characterAbsoluteContainer} pointerEvents="none">
-        <Image source={characterImg} style={styles.actualCharacterImage} />
-      </View>
-
-      {/* 하단 레이어: 하얀색 큰 아치(원형) 본문 */}
+      {/* [1층 렌더링] 하얀색 아치 본문 바디 (가장 밑바닥 틀) */}
       <View style={styles.archBody}>
-        {/* 인풋창 (ID, Password) - 캐릭터 밑부분을 가리도록 마진 조정 */}
+        
+        {/* [2층 렌더링] 귀여운 캐릭터 레이어 (아치 자식으로 이동하여 아치선 위에 안착) */}
+        <View style={styles.characterAbsoluteContainer} pointerEvents="none">
+          <Image source={characterImg} style={styles.actualCharacterImage} />
+        </View>
+
+        {/* [3층 렌더링] 인풋창 컨테이너 (높은 zIndex와 상단 마진으로 캐릭터 몸통 하단을 덮음) */}
         <View style={styles.formContainer}>
           <TextInput
             style={styles.capsuleInput}
@@ -98,30 +95,27 @@ export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
           />
         </View>
 
-        {/* 하단 버튼 영역 */}
+        {/* 하단 로그인 및 회원가입 버튼 열 */}
         <View style={styles.buttonRow}>
-          {/* ⭐️ onPress에 방금 만든 handleLogin 함수를 연결했습니다! */}
           <TouchableOpacity style={styles.capsuleBtn} onPress={handleLogin}>
             <Text style={styles.btnText}>로그인</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.capsuleBtn}
-            onPress={() => alert("회원가입 페이지 준비 중")}
+            onPress={() => router.push("/signup")}
           >
             <Text style={styles.btnText}>회원가입</Text>
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </LinearGradient>
   );
 }
 
-// 지영님이 맞춰두신 황금 비율 스타일 시트 그대로 유지!
 const styles = StyleSheet.create({
   landingContainer: {
     flex: 1,
-    backgroundColor: "#BBE6E8",
   },
   landingHeader: {
     flex: 4.8,
@@ -135,38 +129,43 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
   },
   actualLogoText: {
-    width: 320,
-    height: 280,
+    width: 270,
+    height: 240,
     resizeMode: "stretch",
-    marginTop: -49,
+    marginTop: -35,
   },
+  // 🤍 1층: 가장 바탕이 되는 하얀색 아치 폼 설정
   archBody: {
-    flex: 6,
+    flex: 6.8,
     backgroundColor: "#fff",
+    width: "100%", // 양옆 여백 비지 않도록 화면 가로 전체 확장
     borderTopLeftRadius: SCREEN_WIDTH * 0.8,
     borderTopRightRadius: SCREEN_WIDTH * 0.8,
     alignItems: "center",
-    paddingHorizontal: 40,
+    paddingHorizontal: 35,
     justifyContent: "center",
+    position: "relative", // 자식들의 절대 위치 기준점 부여
   },
+  // 🐹 2층: 아치 지붕선에 걸쳐져 머리와 상체가 밖으로 삐져나오는 캐릭터 설정
   characterAbsoluteContainer: {
     position: "absolute",
-    top: "52%",
+    top: 9, // 마이너스 오프셋으로 아치 하얀 선 위쪽으로 캐릭터를 밀어 올림
     left: 0,
     right: 0,
     alignItems: "center",
-    zIndex: 10,
+    zIndex: 1, // 아치 바닥면보다 위에 배치
   },
   actualCharacterImage: {
-    width: 175,
-    height: 175,
+    width: 178,
+    height: 178,
     resizeMode: "contain",
   },
+  // ⌨️ 3층: 캐릭터 몸통을 덮으며 올라오는 인풋 입력창 구역 설정
   formContainer: {
     width: "100%",
     alignItems: "center",
-    marginTop: 64,
-    zIndex: 20,
+    marginTop: 33, // 캐릭터 밑부분과 자연스럽게 겹치도록 정렬 간격 조정
+    zIndex: 20, // 캐릭터(zIndex: 1)를 완전히 덮고 위로 올라오도록 서열 정리
   },
   capsuleInput: {
     width: "85%",

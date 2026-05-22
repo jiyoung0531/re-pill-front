@@ -1,42 +1,84 @@
-import React, { useState } from "react";
+import { useRouter } from "expo-router";
+import React from "react";
+import { LinearGradient } from 'expo-linear-gradient';
 import {
-    Dimensions,
-    Image,
-    StyleSheet,
-    View
+  Dimensions,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-interface LoadingScreenProps {
-  onLoginSuccess?: () => void;
-}
-
+const camIcon = require("../assets/images/camera.png");
+const saveIcon = require("../assets/images/save.png");
+const mapIcon = require("../assets/images/map.png");
 const characterImg = require("../assets/images/char.png");
-const logoImg = require("../assets/images/logo1.png");
 const logoTextImg = require("../assets/images/logo2.png");
 
-export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
-  const [showLogin, setShowLogin] = useState(false);
-  const [id, setId] = useState("");
-  const [password, setPassword] = useState("");
+export default function MainScreen() {
+  const router = useRouter();
 
-  // 2단계: ⭐️ 시안 완벽 반영 로그인 랜딩 화면
   return (
     <View style={styles.landingContainer}>
-      {/* 상단 레이어: 연민트 배경 + 로고와 글씨 배치 */}
-      <View style={styles.landingHeader}>
-        <Image source={logoImg} style={styles.actualLogoImage} />
+      {/* 1. 상단 로고 텍스트 영역 */}
+      <LinearGradient
+      // 위쪽은 시그니처 민트색, 아래쪽은 연한 민트색으로 부드럽게 이어지도록 설정
+        colors={['#BBE6E8', '#FFEB8D']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.landingHeader} // 기존 헤더 스타일(높이, 패딩 등)은 그대로 유지!
+    >
         <Image source={logoTextImg} style={styles.actualLogoText} />
-      </View>
+      
 
-      {/* ⭐️ 캐릭터 독립 레이어 배치: 아치선 경계에 완벽히 겹치도록 분리 */}
+      {/* 2. 캐릭터 절대 위치 레이어 */}
       <View style={styles.characterAbsoluteContainer} pointerEvents="none">
         <Image source={characterImg} style={styles.actualCharacterImage} />
       </View>
 
-      {/* 하단 레이어: 하얀색 큰 아치(원형) 본문 */}
-      <View style={styles.archBody}></View>
+      {/* 3. 상단과 하단 아치 사이의 공백 밸런스 */}
+      <View style={{ flex: 4 }} />
+
+      {/* 4. 하단 레이어: 하얀색 큰 아치(원형) 본문 */}
+      <View style={styles.archBody}>
+        {/* ⭐️ [위층] 주인공: 가로로 길고 직관적인 큰 약 스캔 버튼 */}
+        <TouchableOpacity
+          style={styles.mainScanBtn}
+          onPress={() => router.push("/scan")}
+        >
+          <Image source={camIcon} style={styles.mainScanIcon} />
+        
+        </TouchableOpacity>
+
+        {/* ⭐️ [아래층] 서브: 보관함과 폐기 지도를 가로로 깔끔하게 2분할 배치 */}
+        <View style={styles.subBtnRow}>
+          {/* 1. 보관함(약 목록) 버튼 */}
+          <TouchableOpacity
+            style={styles.subMenuItem}
+            onPress={() => router.push("/medicine-list")}
+          >
+            <View style={styles.iconWrapper}>
+              <Image source={saveIcon} style={styles.subIconBtn} />
+            </View>
+            <Text style={styles.subMenuText}>보관함</Text>
+          </TouchableOpacity>
+
+          {/* 2. 폐기 지도 버튼 */}
+          <TouchableOpacity
+            style={styles.subMenuItem}
+            onPress={() => router.push("/disposal-map")}
+          >
+            <View style={styles.iconWrapper}>
+              <Image source={mapIcon} style={styles.subIconBtn} />
+            </View>
+            <Text style={styles.subMenuText}>폐기 지도</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      </LinearGradient>
     </View>
   );
 }
@@ -44,108 +86,98 @@ export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
 const styles = StyleSheet.create({
   landingContainer: {
     flex: 1,
-    backgroundColor: "#BBE6E8",
   },
   landingHeader: {
     flex: 4.8,
     justifyContent: "flex-start",
     alignItems: "center",
-    paddingTop: 85,
+    paddingTop: 75,
+    backgroundColor: "transparent",
   },
-
-  // 1. 맨 위 네이비색 사각 로고 크기 조정
-  actualLogoImage: {
-    width: 175,
-    height: 175,
+  actualLogoText: {
+    width: 320,
+    height: 290,
+    resizeMode: "stretch",
+    marginTop: -45,
+  },
+  characterAbsoluteContainer: {
+    position: "absolute",
+    top: "35%",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 10,
+  },
+  actualCharacterImage: {
+    width: 185,
+    height: 185,
     resizeMode: "contain",
   },
-
-  // 2. 이름 불일치 에러 완벽 해결 (actualLogoText로 통일)
-  actualLogoText: {
-    width: 320, // 중간 글씨 크기 시원하게 키움
-    height: 280,
-    resizeMode: "stretch",
-    marginTop: -49, // 로고 이미지 아래로 적절히 배치
-  },
-
-  // 하단 흰색 아치 바디
   archBody: {
-    flex: 6,
+    flex: 24,
     backgroundColor: "#fff",
     borderTopLeftRadius: SCREEN_WIDTH * 0.8,
     borderTopRightRadius: SCREEN_WIDTH * 0.8,
     alignItems: "center",
-    paddingHorizontal: 40,
-    justifyContent: "center", // 내부 폼과 버튼 중앙 정렬
+    paddingHorizontal: 35,
+    paddingTop: 140, // 캐릭터 꼬리가 아치 위에 자연스럽게 얹어지도록 상단 여백 조절
+    justifyContent: "flex-start", // 컴포넌트들이 위에서부터 차례대로 정렬되도록 변경
   },
 
-  // 3. ⭐️ 캐릭터를 아치선 한가운데 고정하고 밑부분이 인풋창 뒤로 가려지게 하는 절대 좌표 치트키
-  characterAbsoluteContainer: {
-    position: "absolute",
-    top: "52%", // 아치형 경계선 부분에 정확히 위치시킴
-    left: 0,
-    right: 0,
+  // ⭐️ 새로 추가된 대형 약 스캔 버튼 스타일
+  mainScanBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    zIndex: 10, // 아치 배경보다는 위, 그러나 인풋창 배경보단 뒤로 가도록 설정
+    justifyContent: "center",
+    backgroundColor: "#BBE6E8", // 전체 화면 무드와 맞춘 민트색 포인트 배경
+    width: "100%",
+    paddingVertical: 18,
+    borderRadius: 20,
+    marginBottom: 75, // 아래 서브 버튼들과의 시각적 분리를 위한 넉넉한 간격
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
   },
-  actualCharacterImage: {
-    width: 175, // ⭐️ 캐릭터 크기 큼직하게 조정
-    height: 175,
+  mainScanIcon: {
+    width: 40,
+    height: 40,
+    marginRight: 30,
     resizeMode: "contain",
   },
-
-  // 입력 폼 영역
-  formContainer: {
-    width: "100%",
-    alignItems: "center",
-    marginTop: 64, // ⭐️ 캐릭터가 겹쳐 올라온 만큼 첫 인풋창을 아래로 내려서 겹치게 만듦
-    zIndex: 20, // 캐릭터 몸통보다 인풋창이 앞으로 튀어나오게 설정
-  },
-  capsuleInput: {
-    width: "85%",
-    height: 46,
-    borderWidth: 1.5,
-    borderColor: "#BBE6E8",
-    borderRadius: 23,
-    paddingHorizontal: 20,
-    fontSize: 15,
-    color: "#5C7A7C",
-    backgroundColor: "#fff", // 캐릭터 아래를 완벽히 가려주기 위한 불투명 흰색 배경
-    marginBottom: 12,
+  mainScanText: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1F355F", // 기존 디자인의 깊이감 있는 네이비 톤 통일
   },
 
-  // 하단 버튼 영역
-  buttonRow: {
+  // ⭐️ 아래 서브 버튼 2개를 묶어주는 가로 정렬 상자
+  subBtnRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    width: "85%",
-    marginTop: 15,
+    width: "100%",
+    paddingHorizontal: 20,
   },
-  capsuleBtn: {
-    flex: 0.47,
-    height: 44,
-    backgroundColor: "#BBE6E8",
-    borderRadius: 22,
-    justifyContent: "center",
+  subMenuItem: {
     alignItems: "center",
-  },
-  btnText: {
-    color: "#5C7A7C",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
-
-  // 로딩 화면 스타일
-  loadingContainer: {
+    justifyContent: "center",
     flex: 1,
-    backgroundColor: "#BBE6E8",
+  },
+  iconWrapper: {
+    marginBottom: 8,
     justifyContent: "center",
     alignItems: "center",
   },
-  loadingText: {
-    marginTop: 15,
-    fontSize: 16,
-    color: "#5C7A7C",
-    fontWeight: "bold",
+  subIconBtn: {
+    width: 75,
+    height: 75,
+    resizeMode: "contain",
+  },
+  subMenuText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1F355F",
+    textAlign: "center",
   },
 });
