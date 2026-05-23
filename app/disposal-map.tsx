@@ -8,9 +8,13 @@ import {
   TouchableOpacity,
   View,
   Platform,
+  Image,
 } from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const targetIcon = require('../assets/images/target.png');
+const listIcon = require('../assets/images/list.png');
 
 export default function MapScreen() {
   const router = useRouter();
@@ -55,12 +59,12 @@ export default function MapScreen() {
 
         {/* 지도 위 플로팅 버튼 1: 좌측 하단 목록 버튼 */}
         <TouchableOpacity style={styles.floatingListBtn} onPress={handleShowList}>
-          <Text style={styles.floatingListBtnText}>📋 목록</Text>
+          <Image source={listIcon}/>
         </TouchableOpacity>
 
         {/* 지도 위 플로팅 버튼 2: 우측 하단 내위치 트래킹 아이콘 버튼 */}
         <TouchableOpacity style={styles.floatingLocationBtn} onPress={handleAutoInput}>
-          <Text style={styles.floatingLocationIcon}>🎯</Text>
+          <Image source={targetIcon} />
         </TouchableOpacity>
       </View>
 
@@ -167,18 +171,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 20,
     left: 20,
-    backgroundColor: "#fff",
-    paddingHorizontal: 16,
-    height: 38,
-    borderRadius: 19,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 3,
   },
   floatingListBtnText: {
     fontSize: 13,
@@ -274,4 +266,5 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 4,
   },
+
 });

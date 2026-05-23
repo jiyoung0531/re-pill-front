@@ -129,21 +129,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#BBE6E8", // 전체 화면 무드와 맞춘 민트색 포인트 배경
-    width: "100%",
+    width: 110,
+    height: 110,
     paddingVertical: 18,
-    borderRadius: 20,
-    marginBottom: 75, // 아래 서브 버튼들과의 시각적 분리를 위한 넉넉한 간격
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    marginBottom: 25, // 아래 서브 버튼들과의 시각적 분리를 위한 넉넉한 간격
     elevation: 3,
   },
   mainScanIcon: {
-    width: 40,
-    height: 40,
-    marginRight: 30,
+    width: 200,
+    height: 200,
+  
     resizeMode: "contain",
   },
   mainScanText: {
