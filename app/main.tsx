@@ -25,35 +25,32 @@ export default function MainScreen() {
     <View style={styles.landingContainer}>
       {/* 1. 상단 로고 텍스트 영역 */}
       <LinearGradient
-      // 위쪽은 시그니처 민트색, 아래쪽은 연한 민트색으로 부드럽게 이어지도록 설정
         colors={['#BBE6E8', '#FFEB8D']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.landingHeader} // 기존 헤더 스타일(높이, 패딩 등)은 그대로 유지!
+        style={styles.landingHeader} 
     >
         <Image source={logoTextImg} style={styles.actualLogoText} />
       
 
-      {/* 2. 캐릭터 절대 위치 레이어 */}
+      {/* 2. 캐릭터 위치 */}
       <View style={styles.characterAbsoluteContainer} pointerEvents="none">
         <Image source={characterImg} style={styles.actualCharacterImage} />
       </View>
 
-      {/* 3. 상단과 하단 아치 사이의 공백 밸런스 */}
+      {/* 3. 상단과 하단 아치 사이 */}
       <View style={{ flex: 4 }} />
 
       {/* 4. 하단 레이어: 하얀색 큰 아치(원형) 본문 */}
       <View style={styles.archBody}>
-        {/* ⭐️ [위층] 주인공: 가로로 길고 직관적인 큰 약 스캔 버튼 */}
+        {/* 스캔(카메라) 버튼 */}
         <TouchableOpacity
           style={styles.mainScanBtn}
           onPress={() => router.push("/scan")}
         >
-          <Image source={camIcon} style={styles.mainScanIcon} />
-        
+          <Image source={camIcon} style={styles.mainScanIcon} />    
         </TouchableOpacity>
 
-        {/* ⭐️ [아래층] 서브: 보관함과 폐기 지도를 가로로 깔끔하게 2분할 배치 */}
         <View style={styles.subBtnRow}>
           {/* 1. 보관함(약 목록) 버튼 */}
           <TouchableOpacity
@@ -95,36 +92,35 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   actualLogoText: {
-    width: 320,
-    height: 290,
+    width: 350,
+    height: 320,
     resizeMode: "stretch",
     marginTop: -45,
   },
   characterAbsoluteContainer: {
     position: "absolute",
-    top: "35%",
+    top: "38%",
     left: 0,
     right: 0,
     alignItems: "center",
     zIndex: 10,
   },
   actualCharacterImage: {
-    width: 185,
-    height: 185,
+    width: 190,
+    height: 190,
     resizeMode: "contain",
   },
   archBody: {
-    flex: 24,
+    flex: 35,
     backgroundColor: "#fff",
     borderTopLeftRadius: SCREEN_WIDTH * 0.8,
     borderTopRightRadius: SCREEN_WIDTH * 0.8,
     alignItems: "center",
     paddingHorizontal: 35,
-    paddingTop: 140, // 캐릭터 꼬리가 아치 위에 자연스럽게 얹어지도록 상단 여백 조절
-    justifyContent: "flex-start", // 컴포넌트들이 위에서부터 차례대로 정렬되도록 변경
+    paddingTop: 100, 
+    justifyContent: "flex-start", 
   },
 
-  // ⭐️ 새로 추가된 대형 약 스캔 버튼 스타일
   mainScanBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -132,22 +128,22 @@ const styles = StyleSheet.create({
     width: 110,
     height: 110,
     paddingVertical: 18,
-    marginBottom: 25, // 아래 서브 버튼들과의 시각적 분리를 위한 넉넉한 간격
+    marginBottom: 25, 
     elevation: 3,
   },
   mainScanIcon: {
-    width: 200,
-    height: 200,
+    width: 220,
+    height: 220,
   
     resizeMode: "contain",
   },
   mainScanText: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F355F", // 기존 디자인의 깊이감 있는 네이비 톤 통일
+    color: "#1F355F",
   },
 
-  // ⭐️ 아래 서브 버튼 2개를 묶어주는 가로 정렬 상자
+  
   subBtnRow: {
     flexDirection: "row",
     justifyContent: "space-between",

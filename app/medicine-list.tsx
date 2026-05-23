@@ -56,8 +56,16 @@ export default function StorageScreen() {
   const [pills, setPills] = useState<PillData[]>(globalPillsMemo);
   const [isLoading, setIsLoading] = useState(false);
 
-  // ⭐️ [대한민국 실시간 날짜 구하기 치트키]
   const [currentDateStr, setCurrentDateStr] = useState("");
+  const [isManualModalVisible, setIsManualModalVisible] = useState(false);
+  
+  // 수동 입력 필드 상태 변수
+  const [manualPill, setManualPill] = useState({
+    symptoms: "",
+    extraInfo: "",
+    expirationDate: "",
+    type: "pill" as "pill" | "bottle" | "powder"
+  });
 
   useEffect(() => {
     const today = new Date();
@@ -90,7 +98,7 @@ export default function StorageScreen() {
     // fetchStorageList(); 
   }, []);
 
-  // 카메라 데이터 수신 및 중복 방지 적재 파트
+  // 카메라 데이터 수신 및 중복 방지 
   useEffect(() => {
     if (params.updatedPill) {
       try {
@@ -106,7 +114,7 @@ export default function StorageScreen() {
             symptoms: newPill.symptoms,
             extraInfo: newPill.extraInfo,
             expirationDate: newPill.expirationDate,
-            duplicatedWarning: "⚠️ 실시간 AI 스캔 분석 등록 완료",
+            duplicatedWarning: newPill.duplicatedWarning || "특이사항 없음",
             is_routine: false, 
             is_taken: false, 
             routine_time: null, 
@@ -121,7 +129,7 @@ export default function StorageScreen() {
     }
   }, [params.updatedPill]);
 
-  // 시간대 선택 Alert 분기
+  // 시간대 선택 Alert
   const handleToggleRoutine = (pillId: string) => {
     const targetPill = pills.find((p) => p.id === pillId);
     if (!targetPill) return;
@@ -165,7 +173,36 @@ export default function StorageScreen() {
     );
   };
 
-  // ⭐️ [신규 연동 이식] 모달 하단에서 호출될 보관함 삭제 핸들러 (DELETE 명세 싱크 완비)
+  // 수동 등록
+  const handleManualSave = () => {
+    if (!manualPill.symptoms.trim()) {
+      Alert.alert("입력 오류", "최소한 약 이름은 입력해 주셔야 합니다!");
+      return;
+    }
+
+    const newManualPill: PillData = {
+      id: String(Date.now()),
+      type: manualPill.type,
+      symptoms: manualPill.symptoms,
+      extraInfo: manualPill.extraInfo || "사용자 직접 등록 의약품",
+      expirationDate: manualPill.expirationDate ? `${manualPill.expirationDate}까지` : "기한 정보 없음",
+      duplicatedWarning: "특이사항 없음",
+      is_routine: false,
+      is_taken: false,
+      routine_time: null,
+    };
+
+    const updatedList = [newManualPill, ...globalPillsMemo];
+    globalPillsMemo = updatedList;
+    setPills(updatedList);
+
+    // 상태 초기화 및 닫기
+    setManualPill({ symptoms: "", extraInfo: "", expirationDate: "", type: "pill" });
+    setIsManualModalVisible(false);
+    Alert.alert("등록 완료", "직접 입력하신 약이 보관함에 안전하게 추가되었습니다!");
+  }; 
+
+
   const handleDeletePill = (pillId: string) => {
     Alert.alert(
       "약 삭제 확인",
@@ -243,13 +280,22 @@ export default function StorageScreen() {
   return (
     <View style={styles.mainContainer}>
       <View style={styles.fixedHeader}>
+
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
+        
         <View style={styles.headerLogoWrapper}>
           <Image source={logoTextImg} style={styles.actualLogoText} />
         </View>
-        <View style={styles.headerRightSpacer} />
+        
+        <TouchableOpacity 
+          style={styles.headerAddButton} 
+          onPress={() => setIsManualModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.headerAddButtonText}>+</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -345,7 +391,7 @@ export default function StorageScreen() {
         }
       />
 
-      {/* 📌 상세 정보 모달 */}
+      {/* 상세 정보 모달 */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -377,7 +423,7 @@ export default function StorageScreen() {
               </View>
             </View>
 
-            {/* ⭐️ [내부 정렬 최적화] 패널 내부 레이아웃 분할 배치 허용 */}
+            {/*  패널 내부 레이아웃 */}
             <View style={styles.modalDbDetailPanel}>
               <View>
                 <Text style={styles.dbContentTextMain}>[약효정보]</Text>
@@ -387,7 +433,7 @@ export default function StorageScreen() {
                 <Text style={styles.dbWarningText}>{selectedPill?.duplicatedWarning}</Text>
               </View>
 
-              {/* ⭐️ [디자인 이식] 루틴 조절 버튼과 약 완전 취소(삭제) 레이아웃 구성 */}
+              {/* 루틴 조절 버튼과 약 완전 취소(삭제) 레이아웃 */}
               {selectedPill && (
                 <View style={styles.modalActionRow}>
                   <TouchableOpacity 
@@ -411,6 +457,64 @@ export default function StorageScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isManualModalVisible} // 헤더 우측 ＋ 버튼을 누르면 이 친구가 켜집니다!
+        onRequestClose={() => setIsManualModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentBox}>
+            <Text style={styles.manualModalTitle}>✍️ 의약품 직접 등록</Text>
+            <Text style={styles.modalSubText}>카메라 인식이 어려울 때 직접 정보를 입력해 주세요.</Text>
+
+            <Text style={styles.fieldLabel}>약 이름 / 주요 증상 (필수)</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={manualPill.symptoms}
+              onChangeText={(text) => setManualPill({ ...manualPill, symptoms: text })}
+              placeholder="예: 타이레놀, 소화제 등"
+              placeholderTextColor="#BAC7C8"
+            />
+
+            <Text style={styles.fieldLabel}>약효 및 효능 설명</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={manualPill.extraInfo}
+              onChangeText={(text) => setManualPill({ ...manualPill, extraInfo: text })}
+              placeholder="예: 두통약, 식후 복용 등"
+              placeholderTextColor="#BAC7C8"
+            />
+
+            <Text style={styles.fieldLabel}>유통 기한</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={manualPill.expirationDate}
+              onChangeText={(text) => setManualPill({ ...manualPill, expirationDate: text })}
+              placeholder="예: 2026.12.31"
+              placeholderTextColor="#BAC7C8"
+            />
+
+            {/* 팝업창 하단 버튼 레이어 */}
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity 
+                style={[styles.popupBtn, styles.cancelBtn]} 
+                onPress={() => setIsManualModalVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>취소</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.popupBtn, styles.saveBtn]} 
+                onPress={handleManualSave}
+              >
+                <Text style={styles.saveBtnText}>보관함에 추가</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -421,7 +525,7 @@ const styles = StyleSheet.create({
   backButton: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, borderColor: "#BBE6E8", alignItems: "center", justifyContent: "center" },
   backButtonText: { fontSize: 18, color: "#5C7A7C", fontWeight: "bold" },
   headerLogoWrapper: { flex: 1, alignItems: "center" },
-  actualLogoText: { width: 145, height: 138, resizeMode: "contain" },
+  actualLogoText: { width: 145, height: 140, resizeMode: "contain" },
   headerRightSpacer: { width: 40 },
   scrollContentContainer: { paddingHorizontal: 24, paddingBottom: 40 },
   
@@ -430,7 +534,6 @@ const styles = StyleSheet.create({
   dateCapsule: { flex: 1, height: 38, borderRadius: 19, borderWidth: 1.5, borderColor: "#BBE6E8", justifyContent: "center", paddingHorizontal: 16 },
   dateText: { color: "#5C7A7C", fontSize: 15, fontWeight: "600" },
   
-  // 지영님의 정교한 bellIcon 커스텀 수치 100% 완전 유지! 🔔
   bellBtn: { marginLeft: 14, marginRight: 3 },
   bellIconStyle: { width: 50, height: 50, resizeMode: "contain" },
   
@@ -469,7 +572,7 @@ const styles = StyleSheet.create({
   modalSymptomsText: { fontSize: 13, fontWeight: "600", color: "#3B4E75" },
   expirationDateText: { fontSize: 13, color: "#FFA629", fontWeight: "500", paddingLeft: 4 },
   
-  // ⭐️ [레이아웃 보정] 내부 컴포넌트 하단 밀어내기 정렬 최적화
+
   modalDbDetailPanel: { borderWidth: 1.5, borderColor: "#5A72A5", borderRadius: 18, padding: 16, minHeight: 280, justifyContent: 'space-between' },
   dbContentTextMain: { fontSize: 13, fontWeight: "bold", color: "#3B4E75" },
   dbContentTextSub: { fontSize: 12, color: "#555", marginTop: 4, lineHeight: 16 },
@@ -479,7 +582,7 @@ const styles = StyleSheet.create({
   modalPillIconContainer: { marginRight: 8, justifyContent: "center", alignItems: "center" },
   dateIcon: { marginRight: 5 },
   
-  // ⭐️ [신규 디자인 통합] 모달 버튼 가로 줄 나열 및 개별 스타일시트 셋업 완료
+ 
   modalActionRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 14, width: '100%' },
   routineToggleBtn: { flex: 0.52, backgroundColor: "#E0F4F5", borderRadius: 12, height: 40, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#BBE6E8" },
   routineToggleBtnActive: { backgroundColor: "#ECEFF1", borderColor: "#CFD8DC" },
@@ -488,4 +591,71 @@ const styles = StyleSheet.create({
   
   deletePillBtn: { flex: 0.44, backgroundColor: "#FFEBEE", borderRadius: 12, height: 40, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#FFCDD2" },
   deletePillBtnText: { color: "#C62828", fontWeight: "bold", fontSize: 13 },
+  headerAddButton: {width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, borderColor: "#BBE6E8", alignItems: "center", justifyContent: "center" },
+  headerAddButtonText: { fontSize: 22, color: "#5C7A7C", fontWeight: "bold" },
+  manualModalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F355F",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  modalSubText: {
+    fontSize: 12,
+    color: "#7AA0A2",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+
+  // ✍️ [추가] 입력창(TextInput) 레이아웃
+  modalInput: {
+    width: "100%",
+    height: 44,
+    borderWidth: 1.5,
+    borderColor: "#E8F3F4",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    fontSize: 14,
+    color: "#333",
+    backgroundColor: "#FCFDFD", // 부드러운 인풋 배경색 가미
+  },
+
+  // 🗂️ [추가] 하단 버튼 행 레이아웃 구조
+  modalButtonRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+  },
+  popupBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cancelBtn: {
+    backgroundColor: "#F5F8F8", // 연한 그레이빛 취소 배경
+    marginRight: 10,
+  },
+  cancelBtnText: {
+    color: "#7AA0A2",
+    fontWeight: "bold",
+    fontSize: 15,
+  },
+  saveBtn: {
+    backgroundColor: "#BBE6E8", // RE:PILL 메인 포인트 민트 컬러와 일치화
+  },
+  saveBtnText: {
+    color: "#1F355F",
+    fontWeight: "bold",
+    fontSize: 15,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: "#5C7A7C",
+    marginBottom: 6,
+    marginTop: 5,
+  },
 });

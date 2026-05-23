@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
+import { supabase } from "../supabaseClient";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -9,18 +10,20 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Modal,       // ⭐️ 수정을 위한 팝업 모달 추가
-  TextInput,   // ⭐️ 직접 입력 및 수정을 위한 인풋 추가
+  Modal,       
+  TextInput,   
   Alert,
   Dimensions,
 } from "react-native";
 
+// 백엔드 서버 인스턴스 (수파베이스 사용하는 경우 주석 해제)
+// import { supabase } from "../supabaseClient";
+
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// ⭐️ 스캔 모드 타입 정의
 type ScanMode = "pill" | "envelope";
 
-// ⭐️ 백엔드와 주고받을 데이터 규격 정의 (명세서 일치형)
+// 규격 정의 
 interface ScanResult {
   type: "pill" | "envelope";
   symptoms: string;          // 백엔드 명세서의 'symptoms' (약 이름 및 주요 증상)
@@ -40,7 +43,7 @@ export default function ScanScreen() {
   // 현재 스캔 모드 상태 (기본값: 알약 자체 찍기)
   const [scanMode, setScanMode] = useState<ScanMode>("pill");
 
-  // ⭐️ [추가 상태] 수정 팝업창 노출 여부 및 백엔드에서 받은 임시 데이터 저장 변수
+  // 수정 팝업창 노출 여부 및 백엔드에서 받은 임시 데이터 저장
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editedResult, setEditedResult] = useState<ScanResult>({
     type: "pill",
@@ -49,42 +52,64 @@ export default function ScanScreen() {
     expirationDate: "",
   });
 
-  // 알약 ↔ 약봉투 모드를 전환하는 함수
+  // ==========================================
+  // 백엔드로부터 전달받을 가변 약 리스트 데이터 스택 제어
+  // ==========================================
+  const [scanResultsArray, setScanResultsArray] = useState<ScanResult[]>([]);
+  const [currentPillIndex, setCurrentPillIndex] = useState(0);
+
+  // 스캔 모드를 전환
   const toggleScanMode = () => {
     setScanMode((current) => (current === "pill" ? "envelope" : "pill"));
   };
 
   // 백엔드 통신용 함수 (사진 캡처 및 전송)
-  // 백엔드 통신용 함수 (★시연 및 UI 테스트용 더미 모드★)
   const takePictureAndSend = async () => {
     if (cameraRef.current && !isProcessing) {
       try {
         setIsProcessing(true); // "AI 분석 중..." 로딩창 켜기
 
-        // ⭐️ 실제 서버 통신 대신 2.5초 동안 로딩이 도는 것처럼 시뮬레이션합니다!
+        // [백엔드 이미지 전송 프로토콜 예시]
+        // ----------------------------------------------------
+        // const photo = await cameraRef.current.takePictureAsync({ quality: 0.5 });
+        // const formData = new FormData();
+        // formData.append("image", { uri: photo.uri, name: "photo.jpg", type: "image/jpeg" } as any);
+        // formData.append("mode", scanMode);
+        //
+        // const response = await fetch("http://YOUR_BACKEND_IP:5000/api/ocr-scan", {
+        //   method: "POST",
+        //   body: formData,
+        //   headers: { "Content-Type": "multipart/form-data" },
+        // });
+        // const responseData: ScanResult[] = await response.json(); // 백엔드가 분석해 준 약 5개 배열 응답 수급
+        // ----------------------------------------------------
+
+        // 임시 테스트용 비동기 시뮬레이터 (진짜 서버 연결 시 이 시뮬레이터 구역을 지우고 위의 response 데이터 바인딩)
         setTimeout(() => {
-          setIsProcessing(false); // 2.5초 뒤 로딩창 끄기
+          setIsProcessing(false);
 
-          // ⭐️ 백엔드에서 받아올 데이터 규격과 똑같은 가짜 데이터를 만들어 줍니다.
-          const dummyResult: ScanResult = scanMode === "pill" 
-            ? {
-                type: "pill",
-                symptoms: "종합감기약 (타이레놀정 500mg)",
-                extraInfo: "두통, 발열, 오한 완화 및 통증 경감",
-                expirationDate: "", // 알약은 유통기한 공백 처리
-              }
-            : {
-                type: "envelope",
-                symptoms: "성북구보건소 처방 약봉투",
-                extraInfo: "아침, 점심, 저녁 식후 30분 복용 (소염진통제 포함)",
-                expirationDate: "2026.12.31까지", // 약봉투는 유통기한 매핑
-              };
+          // 서버가 분석해서 반환해 준 진짜 결과물 예시 데이터 (여러 개가 들어있는 진짜 가변 배열 구조)
+          const mockServerResponse: ScanResult[] = scanMode === "pill"
+            ? [
+                { type: "pill", symptoms: "종합감기약 (타이레놀정 500mg)", extraInfo: "두통, 발열, 오한 완화\n⚠️ 아세트아미노펜 성분 중복 복용 주의!", expirationDate: "" },
+              ]
+            : [
+                { type: "envelope", symptoms: "종합감기약 (타이레놀)", extraInfo: "두통, 발열, 오한 완화\n⚠️ 아세트아미노펜 성분 중복 복용 주의!", expirationDate: "2028.12.31까지" },
+                { type: "envelope", symptoms: "소화제 (까스활명수)", extraInfo: "식욕부진, 위부팽만감 개선", expirationDate: "2027.05.20까지" },
+                { type: "envelope", symptoms: "지사제 (스멕타)", extraInfo: "급만성 설사 증상 완화", expirationDate: "2026.11.15까지" },
+                { type: "envelope", symptoms: "비타민D 영양제", extraInfo: "뼈 형성 및 골다공증 위험 감소", expirationDate: "2029.01.10까지" },
+                { type: "envelope", symptoms: "알레르기 비염약", extraInfo: "재채기, 콧물, 가려움 완화", expirationDate: "2027.08.04까지" },
+              ];
 
-          // ⭐️ 가짜 데이터를 수정 상태에 넣고 팝업창을 엽니다!
-          setEditedResult(dummyResult);
-          setIsEditModalVisible(true); // 수정 팝업 오픈!
+          // 1. 서버가 준 전체 리스트 배열을 상태에 온전히 세팅
+          setScanResultsArray(mockServerResponse);
+          setCurrentPillIndex(0); // 인덱스 초기화
 
-        }, 2500); // 2500ms = 2.5초 동안 로딩 가동
+          // 2. 입력 수정 인풋창(editedResult)에 0번째(첫 번째) 약 데이터를 먼저 매핑팅
+          setEditedResult(mockServerResponse[0]);
+          setIsEditModalVisible(true); // 수정 팝업 오픈
+
+        }, 2000);
 
       } catch (error) {
         console.error(error);
@@ -94,43 +119,44 @@ export default function ScanScreen() {
     }
   };
 
-  // ⭐️ 팝업창에서 최종 확인/수정 후 '보관함에 저장' 버튼 누를 때 실행되는 함수
+  // 팝업창에서 저장시 실행
   const handleFinalSave = async () => {
     try {
-      setIsEditModalVisible(false);
+      // [정석 백엔드 DB 저장 프로토콜]
+      // 유저가 수정한 최종본인 'editedResult' 객체를 루프를 돌며 백엔드 API 또는 Supabase에 직접 Insert 처리합니다.
+      // ----------------------------------------------------------------------
+      // const { error } = await supabase.from("medicine").insert([{
+      //   pill_name: editedResult.symptoms,
+      //   effect_info: editedResult.extraInfo,
+      //   expiry_date: editedResult.expirationDate,
+      //   is_taken: false
+      // }]);
+      // if (error) throw error;
+      // ----------------------------------------------------------------------
 
-      
-      // [백엔드 연동 전] 지금 당장 해커톤 시연 및 프론트 단독 테스트용
-      // ==========================================================
-      Alert.alert("저장 완료", "약 보관함에 안전하게 등록되었습니다.");
-      router.push({
-        pathname: "/medicine-list",
-        params: { updatedPill: JSON.stringify(editedResult) } // 가짜 데이터 전달
-      });
+      // 릴레이 제어 검증: 아직 배열상 검증 및 저장이 안 끝난 다음 약 데이터가 존재한다면?
+      if (currentPillIndex < scanResultsArray.length - 1) {
+        const nextIndex = currentPillIndex + 1;
+        setCurrentPillIndex(nextIndex);
 
-    
-      // [백엔드 연동 후]  실제 백엔드 DB에 최종본 저장할 때 사용하는 정석 코드
-      // (백엔드에서 "보관함 저장 API" 주소가 나오면 아래 주석을 풀고 위 코드를 주석처리 하세요!)
-      // ==========================================================
-      /*
-      setIsProcessing(true); // 저장하는 동안 잠깐 로딩 켜기
-      
-      const saveUrl = "http://192.168.0.100:5000/api/storage"; // 백엔드가 줄 저장 주소
-      const response = await fetch(saveUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editedResult), // 유저가 수정한 최종 symptoms, extraInfo 등을 JSON으로 전송!
-      });
+        // 레이아웃 팝업은 가만히 둔 채, 인풋 내용물(editedResult)만 다음 순번의 실제 데이터로 교체
+        setEditedResult({
+          type: scanResultsArray[nextIndex].type,
+          symptoms: scanResultsArray[nextIndex].symptoms,
+          extraInfo: scanResultsArray[nextIndex].extraInfo,
+          expirationDate: scanResultsArray[nextIndex].expirationDate,
+        });
 
-      if (response.ok) {
-        Alert.alert("저장 완료", "약 보관함에 데이터가 성공적으로 저장되었습니다.");
-        // 백엔드 DB에 잘 들어갔으니, 보관함 화면으로 깔끔하게 이동!
-        router.push("/storage"); 
       } else {
-        Alert.alert("저장 실패", "서버에 저장하는 중 오류가 발생했습니다.");
+        // 배열 내부의 마지막 의약품 정보까지 전부 서버 적재 처리가 끝난 경우
+        setIsEditModalVisible(false);
+        Alert.alert("저장 완료", "스캔된 모든 의약품 정보가 저장되었습니다.");
+        
+        router.push({
+          pathname: "/medicine-list",
+          params: { updatedPill: JSON.stringify(editedResult) } 
+        });
       }
-      setIsProcessing(false);
-      */
 
     } catch (e) {
       console.error(e);
@@ -138,9 +164,7 @@ export default function ScanScreen() {
     }
   };
 
-  
-
-  // --- 카메라 권한 체크 ---
+  // 카메라 권한 체크
   if (!permission) return <View />;
   if (!permission.granted) {
     return (
@@ -233,7 +257,7 @@ export default function ScanScreen() {
       {/* 4. 하단 여백 바 */}
       <View style={styles.bottomBar} />
 
-      {/* ⭐️ [핵심 기능] AI 분석 결과 수정 및 확인용 팝업창 (Modal) */}
+      {/* AI 분석 결과 수정 및 확인용 팝업창 (Modal) */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -242,7 +266,11 @@ export default function ScanScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>🔍 인식 결과 확인 및 수정</Text>
+            
+            {/* 인식 결과 확인 */}
+            <Text style={styles.modalTitle}>
+              🔍 인식 결과 확인 및 수정 ({currentPillIndex + 1} / {scanResultsArray.length})
+            </Text>
             <Text style={styles.modalSubText}>텍스트가 부정확하다면 직접 터치해 수정해 주세요.</Text>
 
             {/* 약 이름 / 주요 증상 수정 칸 */}
@@ -286,7 +314,9 @@ export default function ScanScreen() {
                 style={[styles.popupBtn, styles.saveBtn]} 
                 onPress={handleFinalSave}
               >
-                <Text style={styles.saveBtnText}>보관함에 저장</Text>
+                <Text style={styles.saveBtnText}>
+                  {currentPillIndex < scanResultsArray.length - 1 ? "보관함에 저장" : "최종 완료"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -295,7 +325,6 @@ export default function ScanScreen() {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
@@ -307,7 +336,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 40,
+    paddingTop: 49,
     paddingHorizontal: 20,
   },
   backBtn: {
@@ -414,7 +443,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
 
-  // ⭐️ [팝업창 관련 전용 스타일 디자인]
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

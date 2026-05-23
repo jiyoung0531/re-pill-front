@@ -15,7 +15,7 @@ import {
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface LoadingScreenProps {
-  onLoginSuccess?: () => void;
+  onLoginSuccess?: (id: string, password: string) => void;
 }
 
 const characterImg = require("../assets/images/char.png");
@@ -37,13 +37,14 @@ export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleLogin = () => {
+ const handleLogin = () => {
     if (onLoginSuccess) {
-      onLoginSuccess();
+      //  사용자가 입력창에 적은 id와 password를 부모(index.tsx) 서버 검증 함수로 이동
+      onLoginSuccess(id, password); 
     }
   };
 
-  // 1단계: 로딩 화면
+  // 로딩 화면
   if (!showLogin) {
     return (
       <View style={styles.loadingContainer}>
@@ -53,7 +54,7 @@ export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
     );
   }
 
-  // 2단계: 대각선 그라데이션 및 입체 레이어 로그인 화면
+
   return (
     <LinearGradient
       colors={['#BBE6E8', '#FFEB8D']}
@@ -61,21 +62,21 @@ export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
       end={{ x: 1, y: 1 }}
       style={styles.landingContainer}
     >
-      {/* 바탕색을 투명하게 비춰주는 상단 로고 영역 */}
+      {/* 상단 로고 영역 */}
       <View style={styles.landingHeader}>
         <Image source={logoImg} style={styles.actualLogoImage} />
         <Image source={logoTextImg} style={styles.actualLogoText} />
       </View>
 
-      {/* [1층 렌더링] 하얀색 아치 본문 바디 (가장 밑바닥 틀) */}
+      {/* 아치 본문 */}
       <View style={styles.archBody}>
         
-        {/* [2층 렌더링] 귀여운 캐릭터 레이어 (아치 자식으로 이동하여 아치선 위에 안착) */}
+        {/*  캐릭터 레이어  */}
         <View style={styles.characterAbsoluteContainer} pointerEvents="none">
           <Image source={characterImg} style={styles.actualCharacterImage} />
         </View>
 
-        {/* [3층 렌더링] 인풋창 컨테이너 (높은 zIndex와 상단 마진으로 캐릭터 몸통 하단을 덮음) */}
+        {/* 인풋창 컨테이너 */}
         <View style={styles.formContainer}>
           <TextInput
             style={styles.capsuleInput}
@@ -95,7 +96,7 @@ export default function LoadingScreen({ onLoginSuccess }: LoadingScreenProps) {
           />
         </View>
 
-        {/* 하단 로그인 및 회원가입 버튼 열 */}
+        {/* 로그인 및 회원가입  */}
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.capsuleBtn} onPress={handleLogin}>
             <Text style={styles.btnText}>로그인</Text>
@@ -134,38 +135,35 @@ const styles = StyleSheet.create({
     resizeMode: "stretch",
     marginTop: -35,
   },
-  // 🤍 1층: 가장 바탕이 되는 하얀색 아치 폼 설정
   archBody: {
     flex: 6.8,
     backgroundColor: "#fff",
-    width: "100%", // 양옆 여백 비지 않도록 화면 가로 전체 확장
+    width: "100%", 
     borderTopLeftRadius: SCREEN_WIDTH * 0.8,
     borderTopRightRadius: SCREEN_WIDTH * 0.8,
     alignItems: "center",
     paddingHorizontal: 35,
     justifyContent: "center",
-    position: "relative", // 자식들의 절대 위치 기준점 부여
+    position: "relative", 
   },
-  // 🐹 2층: 아치 지붕선에 걸쳐져 머리와 상체가 밖으로 삐져나오는 캐릭터 설정
   characterAbsoluteContainer: {
     position: "absolute",
-    top: 9, // 마이너스 오프셋으로 아치 하얀 선 위쪽으로 캐릭터를 밀어 올림
+    top: 9,
     left: 0,
     right: 0,
     alignItems: "center",
-    zIndex: 1, // 아치 바닥면보다 위에 배치
+    zIndex: 1, 
   },
   actualCharacterImage: {
     width: 178,
     height: 178,
     resizeMode: "contain",
   },
-  // ⌨️ 3층: 캐릭터 몸통을 덮으며 올라오는 인풋 입력창 구역 설정
   formContainer: {
     width: "100%",
     alignItems: "center",
-    marginTop: 33, // 캐릭터 밑부분과 자연스럽게 겹치도록 정렬 간격 조정
-    zIndex: 20, // 캐릭터(zIndex: 1)를 완전히 덮고 위로 올라오도록 서열 정리
+    marginTop: 33, 
+    zIndex: 20,
   },
   capsuleInput: {
     width: "85%",

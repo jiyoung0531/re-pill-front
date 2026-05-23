@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { LinearGradient } from 'expo-linear-gradient';
+import { createClient } from "@supabase/supabase-js";
 import {
     Dimensions,
     Image,
@@ -12,11 +13,15 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Alert,
 } from "react-native";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// 기존 이미지 경로들
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
 const characterImg = require("../assets/images/char.png");
 
 export default function SignUpScreen() {
@@ -29,9 +34,44 @@ export default function SignUpScreen() {
   const [name, setName] = useState("");
   const [birth, setBirth] = useState("");
 
-  const handleSignUp = () => {
-    alert("회원가입이 완료되었습니다!");
-    router.replace("/main");
+  const handleSignUp = async () => {
+    // id, password, birth으로 빈값 체크
+    if (!id || !password || !birth) {
+      Alert.alert("알림", "아이디, 비밀번호, 생년월일을 모두 입력해 주세요.");
+      return;
+    }
+
+    // upabase 회원가입 시작
+    try {
+      // 수파베이스는 기본적으로 '이메일 형태'를 아이디로 받음 
+      // 일반 아이디(id) 뒤에 서비스 도메인을 임시로 붙여 이메일 형태로 변환해 가입
+      const { data, error } = await supabase.auth.signUp({
+        email: `${id}@repill.com`, 
+        password: password,
+        options: {
+          data: {
+            birthdate: birth, // 생년월일 추가 데이터는 metadata에 저장
+          },
+        },
+      });
+
+      if (error) {
+        Alert.alert("회원가입 실패", error.message);
+      } else if (data) {
+        // 가입 성공 시 알림을 띄우고 메인 화면으로 이동
+        Alert.alert("성공", "회원가입이 완료되었습니다!", [
+          {
+            text: "확인",
+            onPress: () => {
+              router.replace("/"); 
+            },
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error("수파베이스 통신 에러:", error);
+      Alert.alert("오류", "네트워크 통신 중 에러가 발생했습니다.");
+    }
   };
 
   return (
@@ -52,13 +92,10 @@ export default function SignUpScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
-          {/* 🤍 1. 하얀색 아치 배경을 '가장 먼저' 배치해서 도화지 바닥에 깔아버리기 */}
           <View style={styles.archBodyBackground} pointerEvents="none" />
-          {/* 2. 그 위에 캐릭터 영역 배치 */}
           <View style={styles.avatarContainer}>
             <Image source={characterImg} style={styles.characterImage} />
           </View>
-          {/* 3. 그 위에 인풋창과 버튼들 배치 (이제 아치 위로 완벽하게 올라옵니다!) */}
           <View style={styles.formContainer}>
             <View style={styles.whiteInputWrapper}>
               <Text style={styles.inputLabel}>아이디:</Text>
@@ -140,12 +177,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 418, // ⭐️ 기기 기준 절대 높이가 아니라 고정 높이로 변경해서 인풋창 아래에 딱 깔리게 조절!
+    height: 418,
     backgroundColor: "#fff",
     borderTopLeftRadius: SCREEN_WIDTH * 0.8,
     borderTopRightRadius: SCREEN_WIDTH * 0.8,
   },
-
   avatarContainer: {
     marginTop: 55,
     marginBottom: -70,
@@ -164,8 +200,6 @@ const styles = StyleSheet.create({
     zIndex: 2,
     marginTop: 37,
   },
-
-  // ⭐️ 2. 위쪽 흰색 인풋창 스타일 + 빵빵한 그림자 효과 부활!
   whiteInputWrapper: {
     width: "100%",
     backgroundColor: "#FFF",
@@ -181,7 +215,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    // 안드로이드 그림자
     elevation: 3,
   },
   inputLabel: {
@@ -191,7 +224,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
 
-  // ⭐️ 3. 아래쪽 민트색 테두리 인풋창 스타일 + 그림자 효과 부활!
   mintBorderInputWrapper: {
     width: "100%",
     backgroundColor: "#FFF",
@@ -202,13 +234,11 @@ const styles = StyleSheet.create({
     height: 50,
     marginBottom: 14,
     borderWidth: 1.5,
-    borderColor: "#BBE6E8", // 지영님이 원하신 민트색 border 테두리!
-    // iOS 그림자
+    borderColor: "#BBE6E8",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
-    // 안드로이드 그림자
     elevation: 2,
   },
   mintBorderInputLabel: {
@@ -224,8 +254,6 @@ const styles = StyleSheet.create({
     color: "#1F355F",
     paddingVertical: 0,
   },
-
-  // ⭐️ 4. 회원가입 버튼 스타일 + 입체적인 그림자 효과 부활!
   signUpBtn: {
     width: "100%",
     backgroundColor: "#BBE6E8",
@@ -235,12 +263,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 15,
     marginBottom: 30,
-    // iOS 그림자
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 5,
-    // 안드로이드 그림자
     elevation: 4,
   },
   signUpBtnText: {
