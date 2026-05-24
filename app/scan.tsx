@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
+import { API_BASE_URL } from "../constants/api";
 import {
   ActivityIndicator,
   Alert,
@@ -22,11 +23,47 @@ const logoTextImg = require("../assets/images/logo2.png");
 type ScanMode = "pill" | "envelope";
 
 interface ScanResult {
-  type: "pill" | "envelope";
+  type: "pill" | "envelope" | "syrup" | "powder";
   symptoms: string;
   extraInfo: string;
+  warningInfo?: string;
   expirationDate: string;
 }
+
+const calculateRecommendedExpiry = (pillType: string): string => {
+  const expiry = new Date();
+  const normalizedType = pillType.toLowerCase();
+
+  if (normalizedType.includes("syrup") || pillType.includes("물약")) {
+    expiry.setDate(expiry.getDate() + 28);
+  } else if (normalizedType.includes("powder") || pillType.includes("가루약")) {
+    expiry.setDate(expiry.getDate() + 21);
+  } else {
+    expiry.setMonth(expiry.getMonth() + 2);
+  }
+
+  const year = expiry.getFullYear();
+  const month = String(expiry.getMonth() + 1).padStart(2, "0");
+  const day = String(expiry.getDate()).padStart(2, "0");
+
+  return `${year}.${month}.${day}`;
+};
+
+const hasRecognizedMedicine = (pill: ScanResult): boolean => {
+  const text = `${pill.symptoms ?? ""} ${pill.extraInfo ?? ""}`.trim();
+  if (!text) return false;
+
+  return !["알 수 없음", "미인식", "인식 실패", "unknown", "none"].some((word) =>
+    text.toLowerCase().includes(word.toLowerCase())
+  );
+};
+
+const getExpirationDateForResult = (pill: ScanResult): string => {
+  if (pill.expirationDate?.trim()) return pill.expirationDate;
+  if (!hasRecognizedMedicine(pill)) return "";
+
+  return calculateRecommendedExpiry(`${pill.type} ${pill.symptoms} ${pill.extraInfo}`);
+};
 
 export default function ScanScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -43,6 +80,7 @@ export default function ScanScreen() {
     type: "pill",
     symptoms: "",
     extraInfo: "",
+    warningInfo: "",
     expirationDate: "",
   });
 
@@ -50,51 +88,71 @@ export default function ScanScreen() {
     setScanMode((current) => (current === "pill" ? "envelope" : "pill"));
   };
 
- const takePictureAndSend = async () => {
+ const setResultForEditing = (pill: ScanResult) => {
+  setEditedResult({
+    ...pill,
+    warningInfo: pill.warningInfo ?? "",
+    expirationDate:
+      pill.type === "envelope"
+        ? pill.expirationDate ?? ""
+        : getExpirationDateForResult(pill),
+  });
+};
+
+  const takePictureAndSend = async () => {
     if (!cameraRef.current || isProcessing) return;
 
     try {
       setIsProcessing(true);
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.5 });
-      
-      // 1. 백엔드로 보낼 FormData 포장하기
       const formData = new FormData();
+
       formData.append("file", {
         uri: photo.uri,
         name: "photo.jpg",
         type: "image/jpeg",
       } as any);
 
-      // 2. [🔥 팀원분 요청 주소로 반영] 배포된 Supabase Edge Function URL로 fetch 요청!
-      const response = await fetch(
-        "https://mjcczeqcqlnsaapabdlc.supabase.co/functions/v1/medicine-api/ocr/analyze",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/ocr/analyze`, {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
-        throw new Error("백엔드 서버의 OCR 분석 응답에 실패했습니다.");
+        throw new Error("백엔드 OCR 분석 응답에 실패했습니다.");
       }
 
-      // 3. 서버가 가공해서 돌려준 데이터(JSON 배열) 받기
-      const data = await response.json();
+      const responseJson = await response.json();
 
-      const responseData = Array.isArray(data) ? data : data ? [data] : [];
-      if (responseData.length === 0) throw new Error("인식 결과가 비어 있습니다.");
+console.log("=== [디버깅] 서버가 보내준 전체 응답 ===");
+console.log(JSON.stringify(responseJson, null, 2));
 
-      // 4. 받아온 데이터를 팝업 모달창 상태에 바인딩
-      setScanResultsArray(responseData);
-      setCurrentPillIndex(0);
-      setEditedResult(responseData[0]);
-      setIsEditModalVisible(true);
-    } catch (error: any) {
-      console.error("scan error:", error);
-      Alert.alert("연결 실패", error.message ?? "서버 연결에 실패했습니다.");
-    } finally {
-      setIsProcessing(false);
-    }
+// 1. responseJson.data?.medicineNames 에서 data?. 를 제거합니다!
+const popupMedicines: ScanResult[] = (responseJson.medicineNames ?? []).map((name: string) => ({
+  type: scanMode,
+  symptoms: name,          // 이제 정상적으로 '팩수클루정40mg' 등이 들어옵니다.
+  extraInfo: "",          
+  warningInfo: "",        
+  expirationDate: "",
+}));
+
+if (popupMedicines.length === 0) {
+  throw new Error("약봉투의 글자가 인식되지 않았습니다. 밝은 곳에서 다시 촬영해 주세요.");
+}
+
+setScanResultsArray(popupMedicines);
+setCurrentPillIndex(0);
+setResultForEditing(popupMedicines[0]);
+setIsEditModalVisible(true);
+
+} catch (error: any) {
+  console.error("scan error:", error);
+  
+  // 2. 얼럿 타이틀을 '연결 실패'에서 '인식 실패'로 변경
+  Alert.alert("인식 실패", error.message ?? "처방 정보를 가져오지 못했습니다.");
+} finally {
+  setIsProcessing(false);
+}
   };
 
   const splitWarning = (extraInfo: string) => {
@@ -112,7 +170,12 @@ export default function ScanScreen() {
   };
 
   const saveCurrentPill = async () => {
-    const { extraInfo, warning } = splitWarning(editedResult.extraInfo);
+    const splitResult = splitWarning(editedResult.extraInfo);
+    const extraInfo = splitResult.extraInfo;
+    const warning = editedResult.warningInfo?.trim()
+      ? editedResult.warningInfo.trim()
+      : splitResult.warning;
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -150,7 +213,7 @@ export default function ScanScreen() {
       if (currentPillIndex < scanResultsArray.length - 1) {
         const nextIndex = currentPillIndex + 1;
         setCurrentPillIndex(nextIndex);
-        setEditedResult(scanResultsArray[nextIndex]);
+        setResultForEditing(scanResultsArray[nextIndex]);
         return;
       }
 
@@ -267,12 +330,21 @@ export default function ScanScreen() {
               placeholder="효능 정보를 입력하세요"
             />
 
+            <Text style={styles.fieldLabel}>주의사항</Text>
+            <TextInput
+              style={[styles.modalInput, styles.multilineInput]}
+              value={editedResult.warningInfo ?? ""}
+              onChangeText={(text) => setEditedResult({ ...editedResult, warningInfo: text })}
+              multiline
+              placeholder="주의사항을 입력하세요"
+            />
+
             <Text style={styles.fieldLabel}>유통 기한</Text>
             <TextInput
               style={styles.modalInput}
               value={editedResult.expirationDate}
               onChangeText={(text) => setEditedResult({ ...editedResult, expirationDate: text })}
-              placeholder="예: 2026.12.31"
+              placeholder="유통기한을 입력하세요"
             />
 
             <View style={styles.modalButtonRow}>

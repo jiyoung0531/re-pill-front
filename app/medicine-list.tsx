@@ -62,6 +62,27 @@ const toPillData = (item: PillLogItemRow): PillData => ({
   routine_time: item.routine_time ?? null,
 });
 
+// 💡 [오류 수정] 오타가 났던 ${date} 부분을 명확하게 ${day} 변수로 바르게 고쳤습니다!
+const calculateRecommendedExpiry = (pillType: string): string => {
+  const today = new Date();
+
+  if (pillType === "pill") {
+    today.setMonth(today.getMonth() + 2); 
+  } else if (pillType === "bottle") {
+    today.setDate(today.getDate() + 28);  
+  } else if (pillType === "powder") {
+    today.setDate(today.getDate() + 21);  
+  } else {
+    today.setMonth(today.getMonth() + 2); 
+  }
+
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}.${month}.${day}`;
+};
+
 export default function StorageScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -72,12 +93,20 @@ export default function StorageScreen() {
   const [pills, setPills] = useState<PillData[]>([]);
   const [currentDateStr, setCurrentDateStr] = useState("");
   const [isManualModalVisible, setIsManualModalVisible] = useState(false);
+  
   const [manualPill, setManualPill] = useState({
     symptoms: "",
     extraInfo: "",
     expirationDate: "",
     type: "pill" as PillType,
   });
+
+  useEffect(() => {
+    if (isManualModalVisible) {
+      const autoDate = calculateRecommendedExpiry(manualPill.type);
+      setManualPill((prev) => ({ ...prev, expirationDate: autoDate }));
+    }
+  }, [manualPill.type, isManualModalVisible]);
 
   const fetchStorageList = async () => {
     try {
@@ -295,7 +324,7 @@ export default function StorageScreen() {
         </View>
       </View>
       <TouchableOpacity style={styles.expandBtn} onPress={() => openDetailPopup(item)}>
-        <Text style={styles.expandBtnText}>상세</Text>
+        <Text style={styles.expandBtnText}>⤢</Text>
       </TouchableOpacity>
     </View>
   );
@@ -387,6 +416,7 @@ export default function StorageScreen() {
         ListEmptyComponent={<Text style={styles.emptyText}>보관된 약이 없습니다.</Text>}
       />
 
+      {/* 1️⃣ 상세 정보 확인 모달창 */}
       <Modal
         animationType="fade"
         transparent
@@ -395,8 +425,9 @@ export default function StorageScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentBox}>
+            {/* 💥 [복구 완료] 첫 번째 사진 속 깨졌던 X 버튼 텍스트와 스타일 연결 복원! */}
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setModalVisible(false)}>
-              <Text style={styles.modalCloseBtnText}>×</Text>
+              <Text style={styles.modalCloseBtnText}>x</Text>
             </TouchableOpacity>
 
             <View style={styles.modalTopRow}>
@@ -453,16 +484,46 @@ export default function StorageScreen() {
         </View>
       </Modal>
 
+      {/* 2️⃣ 수동 직접 등록 모달창 */}
       <Modal
-        animationType="slide"
+        animationType="fade" // 💥 [복구 완료] 두 번째 사진 피드백 반영! 대각선 팝업 느낌을 내는 fade 원본 뼈대로 롤백!
         transparent
         visible={isManualModalVisible}
         onRequestClose={() => setIsManualModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentBox}>
+            {/* 💥 [추가 복구] 직접 등록 창에도 쉽게 닫을 수 있도록 우측 상단 X 단추 레이아웃을 똑같이 적용해 두었습니다! */}
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setIsManualModalVisible(false)}>
+              <Text style={styles.modalCloseBtnText}>x</Text>
+            </TouchableOpacity>
+
             <Text style={styles.manualModalTitle}>의약품 직접 등록</Text>
             <Text style={styles.modalSubText}>카메라 인식이 어려우면 직접 입력해 주세요.</Text>
+
+            <Text style={styles.fieldLabel}>약 종류 선택</Text>
+            <View style={styles.typeButtonGroup}>
+              <TouchableOpacity
+                style={[styles.typeButton, manualPill.type === "pill" && styles.activeTypeButton]}
+                onPress={() => setManualPill({ ...manualPill, type: "pill" })}
+              >
+                <Text style={[styles.typeButtonText, manualPill.type === "pill" && styles.activeTypeButtonText]}> 알약</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.typeButton, manualPill.type === "bottle" && styles.activeTypeButton]}
+                onPress={() => setManualPill({ ...manualPill, type: "bottle" })}
+              >
+                <Text style={[styles.typeButtonText, manualPill.type === "bottle" && styles.activeTypeButtonText]}> 물약</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.typeButton, manualPill.type === "powder" && styles.activeTypeButton]}
+                onPress={() => setManualPill({ ...manualPill, type: "powder" })}
+              >
+                <Text style={[styles.typeButtonText, manualPill.type === "powder" && styles.activeTypeButtonText]}> 가루약</Text>
+              </TouchableOpacity>
+            </View>
 
             <Text style={styles.fieldLabel}>약 이름 / 주요 증상</Text>
             <TextInput
@@ -482,7 +543,7 @@ export default function StorageScreen() {
               placeholderTextColor="#BAC7C8"
             />
 
-            <Text style={styles.fieldLabel}>유통 기한</Text>
+            <Text style={styles.fieldLabel}>유통 기한 (종류 선택 시 자동 입력)</Text>
             <TextInput
               style={styles.modalInput}
               value={manualPill.expirationDate}
@@ -587,8 +648,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 20,
   },
-  searchInput: { flex: 1, fontSize: 14, color: "#5C7A7C" },
-  searchIcon: { fontSize: 16, color: "#5C7A7C" },
+  searchInput: { flex: 1, fontSize: 16, color: "#5C7A7C" },
+  searchIcon: { fontSize: 32, color: "#5C7A7C" },
   emptyText: { textAlign: "center", color: "#5C7A7C", fontWeight: "600", marginTop: 20 },
   pillCard: {
     backgroundColor: "#fff",
@@ -614,7 +675,7 @@ const styles = StyleSheet.create({
   symptomsText: { fontSize: 13.8, fontWeight: "600", color: "#3B4E75" },
   extraInfoText: { fontSize: 13.5, color: "#FFA629", marginTop: 4, fontWeight: "500" },
   expandBtn: { padding: 6 },
-  expandBtnText: { fontSize: 14, color: "#5A72A5", fontWeight: "bold" },
+  expandBtnText: { fontSize: 30, color: "#5A72A5", fontWeight: "bold" },
   pillIconImg: { width: 40, height: 43, resizeMode: "contain" },
   pillIconContainer: { marginRight: 12, justifyContent: "center", alignItems: "center" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.4)", justifyContent: "center", alignItems: "center" },
@@ -731,4 +792,34 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: "#7AA0A2", fontWeight: "bold", fontSize: 15 },
   saveBtn: { backgroundColor: "#BBE6E8" },
   saveBtnText: { color: "#1F355F", fontWeight: "bold", fontSize: 15 },
+  typeButtonGroup: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  typeButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginHorizontal: 4,
+    backgroundColor: "#F8FAFC",
+  },
+  typeButtonText: {
+    fontSize: 14,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  
+  activeTypeButton: {
+    borderColor: "#1F355F",
+    backgroundColor: "#1F355F",
+  },
+  activeTypeButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
 });

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Alert,
   Dimensions,
@@ -13,6 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import MapView, { Marker } from "react-native-maps"; 
+import * as Location from "expo-location"; 
 import { supabase } from "../supabaseClient";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -24,8 +26,8 @@ interface BinItem {
   bin_name: string;
   address: string;
   distance: number;
-  latitude?: number;
-  longitude?: number;
+  latitude: number; 
+  longitude: number; 
 }
 
 const DEFAULT_LOCATION = {
@@ -57,10 +59,45 @@ export default function MapScreen() {
   const [targetLocation, setTargetLocation] = useState("");
   const [binList, setBinList] = useState<BinItem[]>([]);
   const [infoVisible, setInfoVisible] = useState(false);
+  const [showList, setShowList] = useState(true);
+
+  const [mapRegion, setMapRegion] = useState({
+    latitude: DEFAULT_LOCATION.latitude,
+    longitude: DEFAULT_LOCATION.longitude,
+    latitudeDelta: 0.007,
+    longitudeDelta: 0.007,
+  });
+
+  useEffect(() => {
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("권한 거부", "위치 권한을 허용해야 현재 위치 기준 수거함을 찾을 수 있습니다.");
+        fetchNearestBins(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
+        return;
+      }
+
+      let currentPosition = await Location.getCurrentPositionAsync({});
+      const currentLat = currentPosition.coords.latitude;
+      const currentLng = currentPosition.coords.longitude;
+
+      setLatitude(String(currentLat));
+      setLongitude(String(currentLng));
+      
+      setMapRegion({
+        latitude: currentLat,
+        longitude: currentLng,
+        latitudeDelta: 0.007,
+        longitudeDelta: 0.007,
+      });
+
+      fetchNearestBins(currentLat, currentLng);
+    })();
+  }, []);
 
   const fetchNearestBins = async (nextLatitude = Number(latitude), nextLongitude = Number(longitude)) => {
     if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
-      Alert.alert("입력 오류", "위도와 경도를 숫자로 입력해 주세요.");
+      Alert.alert("입력 오류", "위치 좌표가 올바르지 않습니다.");
       return;
     }
 
@@ -71,28 +108,59 @@ export default function MapScreen() {
 
       if (error) throw error;
 
+      console.log("=== [디버깅] 내 현재 위치 ===", nextLatitude, nextLongitude);
+      console.log("=== [디버깅] DB 원본 데이터 예시 ===", JSON.stringify(data?.slice(0, 3), null, 2));
+
       const formattedList = (data ?? [])
-        .map((item: any) => ({
-          bin_name: item.bin_name,
-          address: item.address,
-          latitude: item.latitude,
-          longitude: item.longitude,
-          distance: getDistanceMeters(nextLatitude, nextLongitude, item.latitude, item.longitude),
-        }))
+        .map((item: any) => {
+          const binLat = parseFloat(item.latitude);
+          const binLng = parseFloat(item.longitude);
+          const dist = getDistanceMeters(nextLatitude, nextLongitude, binLat, binLng);
+
+          return {
+            bin_name: item.bin_name,
+            address: item.address,
+            latitude: binLat,
+            longitude: binLng,
+            distance: dist,
+          };
+        })
+        .filter((item) => !isNaN(item.distance))
         .sort((a, b) => a.distance - b.distance);
 
       setBinList(formattedList);
       setTargetLocation(formattedList[0]?.bin_name ?? "");
+
+      if (formattedList[0]) {
+        setMapRegion({
+          latitude: nextLatitude,
+          longitude: nextLongitude,
+          latitudeDelta: 0.007,
+          longitudeDelta: 0.007,
+        });
+      }
     } catch (error: any) {
       console.error("fetch bins error:", error);
       Alert.alert("오류", error.message ?? "수거함 목록을 불러오지 못했습니다.");
     }
   };
 
-  const handleAutoInput = () => {
-    setLatitude(String(DEFAULT_LOCATION.latitude));
-    setLongitude(String(DEFAULT_LOCATION.longitude));
-    fetchNearestBins(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
+  const handleAutoInput = async () => {
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      setLatitude(String(DEFAULT_LOCATION.latitude));
+      setLongitude(String(DEFAULT_LOCATION.longitude));
+      fetchNearestBins(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
+      return;
+    }
+
+    let currentPosition = await Location.getCurrentPositionAsync({});
+    const currentLat = currentPosition.coords.latitude;
+    const currentLng = currentPosition.coords.longitude;
+
+    setLatitude(String(currentLat));
+    setLongitude(String(currentLng));
+    fetchNearestBins(currentLat, currentLng);
   };
 
   const handleFindRoute = () => {
@@ -100,19 +168,19 @@ export default function MapScreen() {
       Alert.alert("알림", "가까운 수거함을 먼저 조회해 주세요.");
       return;
     }
-
     Alert.alert("길찾기", `목적지: ${targetLocation}`);
   };
 
   const handleShowList = () => {
-    fetchNearestBins();
+    setShowList(!showList); 
+    if (!showList) {
+      fetchNearestBins(); 
+    }
   };
 
   return (
     <View style={styles.mainContainer}>
-      <TouchableOpacity style={styles.questionButton} onPress={() => setInfoVisible(true)}>
-        <Text style={styles.questionText}>?</Text>
-      </TouchableOpacity>
+      {/* ✂️ 우측 상단 물음표(?) 동그라미 버튼 코드를 삭제했습니다. */}
 
       <Modal
         animationType="fade"
@@ -148,10 +216,25 @@ export default function MapScreen() {
       </Modal>
 
       <View style={styles.mapViewPlaceholder}>
-        <Text style={styles.mapDummyText}>MAP AREA</Text>
-        <Text style={styles.mapSubDummyText}>
-          {binList[0] ? `가장 가까운 수거함: ${binList[0].bin_name}` : "수거함 목록을 조회해 주세요"}
-        </Text>
+        <MapView 
+          style={StyleSheet.absoluteFillObject} 
+          region={mapRegion}
+          onRegionChangeComplete={setMapRegion}
+          showsUserLocation={true} 
+        >
+          {binList.map((bin, index) => (
+            <Marker
+              key={`${bin.bin_name}-${index}`}
+              coordinate={{ latitude: bin.latitude, longitude: bin.longitude }}
+              title={bin.bin_name}
+              description={bin.address}
+              pinColor={index === 0 ? "orange" : "red"} 
+              onPress={() => {
+                setTargetLocation(bin.bin_name);
+              }}
+            />
+          ))}
+        </MapView>
 
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>‹</Text>
@@ -169,32 +252,6 @@ export default function MapScreen() {
       <View style={styles.bottomSheetContainer}>
         <View style={styles.archBody}>
           <View style={styles.formContainer}>
-            <View style={styles.coordinateRow}>
-              <View style={[styles.capsuleInputWrapper, styles.coordinateInput]}>
-                <Text style={styles.inputLabel}>위도</Text>
-                <TextInput
-                  style={styles.input}
-                  value={latitude}
-                  onChangeText={setLatitude}
-                  keyboardType="numeric"
-                  placeholder="37.5665"
-                  placeholderTextColor="#A8C9CB"
-                />
-              </View>
-
-              <View style={[styles.capsuleInputWrapper, styles.coordinateInput]}>
-                <Text style={styles.inputLabel}>경도</Text>
-                <TextInput
-                  style={styles.input}
-                  value={longitude}
-                  onChangeText={setLongitude}
-                  keyboardType="numeric"
-                  placeholder="126.978"
-                  placeholderTextColor="#A8C9CB"
-                />
-              </View>
-            </View>
-
             <View style={styles.capsuleInputWrapper}>
               <Text style={styles.inputLabel}>수거함</Text>
               <TextInput
@@ -205,6 +262,14 @@ export default function MapScreen() {
                 onChangeText={setTargetLocation}
               />
             </View>
+
+            {/* 🆕 [수거함] 창 바로 밑에 [올바른 폐기 방법] 버튼 추가 */}
+            <TouchableOpacity 
+              style={styles.infoLinkButton} 
+              onPress={() => setInfoVisible(true)}
+            >
+              <Text style={styles.infoLinkButtonText}>올바른 폐기 방법</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.buttonRow}>
@@ -217,19 +282,21 @@ export default function MapScreen() {
             </TouchableOpacity>
           </View>
 
-          <FlatList
-            data={binList}
-            keyExtractor={(item) => `${item.bin_name}-${item.address}`}
-            style={styles.binList}
-            renderItem={({ item }) => (
-              <View style={styles.binItem}>
-                <Text style={styles.binName}>{item.bin_name}</Text>
-                <Text style={styles.binAddress}>{item.address}</Text>
-                <Text style={styles.binDistance}>{item.distance.toLocaleString()}m</Text>
-              </View>
-            )}
-            ListEmptyComponent={<Text style={styles.emptyText}>조회된 수거함이 없습니다.</Text>}
-          />
+          {showList && (
+            <FlatList
+              data={binList}
+              keyExtractor={(item) => `${item.bin_name}-${item.address}`}
+              style={styles.binList}
+              renderItem={({ item }) => (
+                <View style={styles.binItem}>
+                  <Text style={styles.binName}>{item.bin_name}</Text>
+                  <Text style={styles.binAddress}>{item.address}</Text>
+                  <Text style={styles.binDistance}>{item.distance.toLocaleString()}m</Text>
+                </View>
+              )}
+              ListEmptyComponent={<Text style={styles.emptyText}>조회된 수거함이 없습니다.</Text>}
+            />
+          )}
 
           <Text style={styles.bottomLogoText}>RE:PILL</Text>
         </View>
@@ -250,17 +317,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
   },
-  mapDummyText: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#4A525A",
-    letterSpacing: 2,
-  },
-  mapSubDummyText: {
-    fontSize: 12,
-    color: "#69717A",
-    marginTop: 6,
-  },
   backButton: {
     position: "absolute",
     top: 50,
@@ -276,6 +332,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 3,
     elevation: 3,
+    zIndex: 10,
   },
   backButtonText: {
     fontSize: 26,
@@ -286,6 +343,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 20,
     left: 20,
+    zIndex: 10,
   },
   floatingLocationBtn: {
     position: "absolute",
@@ -302,6 +360,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 3,
     elevation: 3,
+    zIndex: 10,
   },
   bottomSheetContainer: {
     backgroundColor: "#BBE6E8",
@@ -321,13 +380,6 @@ const styles = StyleSheet.create({
     width: "100%",
     marginBottom: 14,
   },
-  coordinateRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  coordinateInput: {
-    flex: 1,
-  },
   capsuleInputWrapper: {
     width: "100%",
     height: 50,
@@ -337,8 +389,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    marginBottom: 10,
     backgroundColor: "#fff",
+  },
+  /* 🆕 [올바른 폐기 방법] 버튼 전용 스타일 추가 */
+  infoLinkButton: {
+    width: "100%",
+    height: 44,
+    backgroundColor: "#F4FAFA", // 수거함 창 및 버튼들과 어울리는 밝은 민트톤 배후색
+    borderWidth: 1,
+    borderColor: "#BBE6E8",
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 10, // 수거함 입력창과의 간격 유지
+  },
+  infoLinkButtonText: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: "#5C7A7C", // 기존 메인 텍스트 컬러 통일
   },
   inputLabel: {
     fontSize: 13,
@@ -408,27 +476,6 @@ const styles = StyleSheet.create({
     color: "#7D92B6",
     letterSpacing: 1,
     marginTop: 4,
-  },
-  questionButton: {
-    position: "absolute",
-    top: 50,
-    right: 20,
-    backgroundColor: "#BBE6E8",
-    width: 35,
-    height: 35,
-    borderRadius: 17.5,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-  },
-  questionText: {
-    color: "#5C7A7C",
-    fontSize: 18,
-    fontWeight: "bold",
   },
   modalOverlay: {
     flex: 1,
