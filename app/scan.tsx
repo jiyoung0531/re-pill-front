@@ -1,50 +1,44 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
-import { supabase } from "../supabaseClient";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  Modal,       
-  TextInput,   
   Alert,
   Dimensions,
+  Image,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-
-// 백엔드 서버 인스턴스 (수파베이스 사용하는 경우 주석 해제)
-// import { supabase } from "../supabaseClient";
+import { supabase } from "../supabaseClient";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const logoTextImg = require("../assets/images/logo2.png");
 
 type ScanMode = "pill" | "envelope";
 
-// 규격 정의 
 interface ScanResult {
   type: "pill" | "envelope";
-  symptoms: string;          // 백엔드 명세서의 'symptoms' (약 이름 및 주요 증상)
-  extraInfo: string;         // 백엔드 명세서의 'extraInfo' (약효 및 효능 설명)
-  expirationDate: string;    // 백엔드 명세서의 'expirationDate' (유통기한)
+  symptoms: string;
+  extraInfo: string;
+  expirationDate: string;
 }
-
-const logoTextImg = require("../assets/images/logo2.png");
 
 export default function ScanScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [facing, setFacing] = useState<"back" | "front">("back");
+  const [facing] = useState<"back" | "front">("back");
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<any>(null);
   const router = useRouter();
 
-  // 현재 스캔 모드 상태 (기본값: 알약 자체 찍기)
   const [scanMode, setScanMode] = useState<ScanMode>("pill");
-
-  // 수정 팝업창 노출 여부 및 백엔드에서 받은 임시 데이터 저장
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [scanResultsArray, setScanResultsArray] = useState<ScanResult[]>([]);
+  const [currentPillIndex, setCurrentPillIndex] = useState(0);
   const [editedResult, setEditedResult] = useState<ScanResult>({
     type: "pill",
     symptoms: "",
@@ -52,133 +46,142 @@ export default function ScanScreen() {
     expirationDate: "",
   });
 
-  // ==========================================
-  // 백엔드로부터 전달받을 가변 약 리스트 데이터 스택 제어
-  // ==========================================
-  const [scanResultsArray, setScanResultsArray] = useState<ScanResult[]>([]);
-  const [currentPillIndex, setCurrentPillIndex] = useState(0);
-
-  // 스캔 모드를 전환
   const toggleScanMode = () => {
     setScanMode((current) => (current === "pill" ? "envelope" : "pill"));
   };
 
-  // 백엔드 통신용 함수 (사진 캡처 및 전송)
-  const takePictureAndSend = async () => {
-    if (cameraRef.current && !isProcessing) {
-      try {
-        setIsProcessing(true); // "AI 분석 중..." 로딩창 켜기
+ const takePictureAndSend = async () => {
+    if (!cameraRef.current || isProcessing) return;
 
-        // [백엔드 이미지 전송 프로토콜 예시]
-        // ----------------------------------------------------
-        // const photo = await cameraRef.current.takePictureAsync({ quality: 0.5 });
-        // const formData = new FormData();
-        // formData.append("image", { uri: photo.uri, name: "photo.jpg", type: "image/jpeg" } as any);
-        // formData.append("mode", scanMode);
-        //
-        // const response = await fetch("http://YOUR_BACKEND_IP:5000/api/ocr-scan", {
-        //   method: "POST",
-        //   body: formData,
-        //   headers: { "Content-Type": "multipart/form-data" },
-        // });
-        // const responseData: ScanResult[] = await response.json(); // 백엔드가 분석해 준 약 5개 배열 응답 수급
-        // ----------------------------------------------------
+    try {
+      setIsProcessing(true);
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.5 });
+      
+      // 1. 백엔드로 보낼 FormData 포장하기
+      const formData = new FormData();
+      formData.append("file", {
+        uri: photo.uri,
+        name: "photo.jpg",
+        type: "image/jpeg",
+      } as any);
 
-        // 임시 테스트용 비동기 시뮬레이터 (진짜 서버 연결 시 이 시뮬레이터 구역을 지우고 위의 response 데이터 바인딩)
-        setTimeout(() => {
-          setIsProcessing(false);
+      // 2. [🔥 팀원분 요청 주소로 반영] 배포된 Supabase Edge Function URL로 fetch 요청!
+      const response = await fetch(
+        "https://mjcczeqcqlnsaapabdlc.supabase.co/functions/v1/medicine-api/ocr/analyze",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
-          // 서버가 분석해서 반환해 준 진짜 결과물 예시 데이터 (여러 개가 들어있는 진짜 가변 배열 구조)
-          const mockServerResponse: ScanResult[] = scanMode === "pill"
-            ? [
-                { type: "pill", symptoms: "종합감기약 (타이레놀정 500mg)", extraInfo: "두통, 발열, 오한 완화\n⚠️ 아세트아미노펜 성분 중복 복용 주의!", expirationDate: "" },
-              ]
-            : [
-                { type: "envelope", symptoms: "종합감기약 (타이레놀)", extraInfo: "두통, 발열, 오한 완화\n⚠️ 아세트아미노펜 성분 중복 복용 주의!", expirationDate: "2028.12.31까지" },
-                { type: "envelope", symptoms: "소화제 (까스활명수)", extraInfo: "식욕부진, 위부팽만감 개선", expirationDate: "2027.05.20까지" },
-                { type: "envelope", symptoms: "지사제 (스멕타)", extraInfo: "급만성 설사 증상 완화", expirationDate: "2026.11.15까지" },
-                { type: "envelope", symptoms: "비타민D 영양제", extraInfo: "뼈 형성 및 골다공증 위험 감소", expirationDate: "2029.01.10까지" },
-                { type: "envelope", symptoms: "알레르기 비염약", extraInfo: "재채기, 콧물, 가려움 완화", expirationDate: "2027.08.04까지" },
-              ];
-
-          // 1. 서버가 준 전체 리스트 배열을 상태에 온전히 세팅
-          setScanResultsArray(mockServerResponse);
-          setCurrentPillIndex(0); // 인덱스 초기화
-
-          // 2. 입력 수정 인풋창(editedResult)에 0번째(첫 번째) 약 데이터를 먼저 매핑팅
-          setEditedResult(mockServerResponse[0]);
-          setIsEditModalVisible(true); // 수정 팝업 오픈
-
-        }, 2000);
-
-      } catch (error) {
-        console.error(error);
-        Alert.alert("연결 실패", "서버 연결에 실패했습니다.");
-        setIsProcessing(false);
+      if (!response.ok) {
+        throw new Error("백엔드 서버의 OCR 분석 응답에 실패했습니다.");
       }
+
+      // 3. 서버가 가공해서 돌려준 데이터(JSON 배열) 받기
+      const data = await response.json();
+
+      const responseData = Array.isArray(data) ? data : data ? [data] : [];
+      if (responseData.length === 0) throw new Error("인식 결과가 비어 있습니다.");
+
+      // 4. 받아온 데이터를 팝업 모달창 상태에 바인딩
+      setScanResultsArray(responseData);
+      setCurrentPillIndex(0);
+      setEditedResult(responseData[0]);
+      setIsEditModalVisible(true);
+    } catch (error: any) {
+      console.error("scan error:", error);
+      Alert.alert("연결 실패", error.message ?? "서버 연결에 실패했습니다.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  // 팝업창에서 저장시 실행
+  const splitWarning = (extraInfo: string) => {
+    if (!extraInfo.includes("주의") && !extraInfo.includes("⚠️")) {
+      return { extraInfo, warning: "특이사항 없음" };
+    }
+
+    const delimiter = extraInfo.includes("⚠️") ? "⚠️" : "주의";
+    const [effect, warning] = extraInfo.split(delimiter);
+
+    return {
+      extraInfo: effect.trim(),
+      warning: warning ? `⚠️ ${delimiter === "주의" ? "주의" : ""}${warning.trim()}` : "특이사항 없음",
+    };
+  };
+
+  const saveCurrentPill = async () => {
+    const { extraInfo, warning } = splitWarning(editedResult.extraInfo);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: log, error: logError } = await supabase
+      .from("PillLogs")
+      .insert({ user_id: user?.id ?? null, prepared_date: today })
+      .select("id")
+      .single();
+
+    if (logError) throw logError;
+
+    const { error: itemError } = await supabase.from("PillLogItems").insert({
+      pill_log_id: log?.id ?? null,
+      pill_name: editedResult.symptoms,
+      type: editedResult.type,
+      extra_info: extraInfo,
+      expiration_date: editedResult.expirationDate,
+      duplicated_warning: warning,
+      is_routine: false,
+      is_taken: false,
+      routine_time: null,
+    });
+
+    if (itemError) throw itemError;
+
+    return { extraInfo, warning };
+  };
+
   const handleFinalSave = async () => {
     try {
-      // [정석 백엔드 DB 저장 프로토콜]
-      // 유저가 수정한 최종본인 'editedResult' 객체를 루프를 돌며 백엔드 API 또는 Supabase에 직접 Insert 처리합니다.
-      // ----------------------------------------------------------------------
-      // const { error } = await supabase.from("medicine").insert([{
-      //   pill_name: editedResult.symptoms,
-      //   effect_info: editedResult.extraInfo,
-      //   expiry_date: editedResult.expirationDate,
-      //   is_taken: false
-      // }]);
-      // if (error) throw error;
-      // ----------------------------------------------------------------------
+      const { extraInfo, warning } = await saveCurrentPill();
 
-      // 릴레이 제어 검증: 아직 배열상 검증 및 저장이 안 끝난 다음 약 데이터가 존재한다면?
       if (currentPillIndex < scanResultsArray.length - 1) {
         const nextIndex = currentPillIndex + 1;
         setCurrentPillIndex(nextIndex);
-
-        // 레이아웃 팝업은 가만히 둔 채, 인풋 내용물(editedResult)만 다음 순번의 실제 데이터로 교체
-        setEditedResult({
-          type: scanResultsArray[nextIndex].type,
-          symptoms: scanResultsArray[nextIndex].symptoms,
-          extraInfo: scanResultsArray[nextIndex].extraInfo,
-          expirationDate: scanResultsArray[nextIndex].expirationDate,
-        });
-
-      } else {
-        // 배열 내부의 마지막 의약품 정보까지 전부 서버 적재 처리가 끝난 경우
-        setIsEditModalVisible(false);
-        Alert.alert("저장 완료", "스캔된 모든 의약품 정보가 저장되었습니다.");
-        
-        router.push({
-          pathname: "/medicine-list",
-          params: { updatedPill: JSON.stringify(editedResult) } 
-        });
+        setEditedResult(scanResultsArray[nextIndex]);
+        return;
       }
 
-    } catch (e) {
-      console.error(e);
-      Alert.alert("에러", "저장 중 알 수 없는 오류가 발생했습니다.");
+      setIsEditModalVisible(false);
+      Alert.alert("저장 완료", "약 정보가 보관함에 저장되었습니다.");
+      router.push({
+        pathname: "/medicine-list",
+        params: {
+          updatedPill: JSON.stringify({
+            type: editedResult.type,
+            symptoms: editedResult.symptoms,
+            extraInfo,
+            expirationDate: editedResult.expirationDate,
+            duplicatedWarning: warning,
+          }),
+        },
+      });
+    } catch (error: any) {
+      console.error("save pill error:", error);
+      Alert.alert("오류", error.message ?? "약 저장 중 오류가 발생했습니다.");
     }
   };
 
-  // 카메라 권한 체크
   if (!permission) return <View />;
+
   if (!permission.granted) {
     return (
       <View style={styles.permissionContainer}>
-        <Text style={{ textAlign: "center", marginBottom: 20 }}>
-          re:pill 앱을 사용하기 위해 카메라 권한이 필요합니다.
-        </Text>
-        <TouchableOpacity
-          style={styles.permissionBtn}
-          onPress={requestPermission}
-        >
-          <Text style={{ color: "#fff", fontWeight: "bold" }}>
-            권한 허용하기
-          </Text>
+        <Text style={styles.permissionText}>re:pill 사용을 위해 카메라 권한이 필요합니다.</Text>
+        <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
+          <Text style={styles.permissionBtnText}>권한 허용하기</Text>
         </TouchableOpacity>
       </View>
     );
@@ -186,7 +189,6 @@ export default function ScanScreen() {
 
   return (
     <View style={styles.mainContainer}>
-      {/* 1. 상단 컨트롤 바 */}
       <View style={styles.topControlBar}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back-outline" size={26} color="#1F355F" />
@@ -195,85 +197,59 @@ export default function ScanScreen() {
         <View style={{ width: 26 }} />
       </View>
 
-      {/* 2. 중앙 카메라 프리뷰 영역 */}
       <View style={styles.cameraContainer}>
         <CameraView style={styles.camera} facing={facing} ref={cameraRef} />
 
-        {/* AI 분석 중 로딩 스피너 */}
         {isProcessing && (
           <View style={styles.insideLoading}>
             <ActivityIndicator size="large" color="#fff" />
-            <Text style={{ color: "#fff", marginTop: 10 }}>AI 분석 중...</Text>
+            <Text style={styles.loadingText}>AI 분석 중...</Text>
           </View>
         )}
 
-        {/* 네모칸 가이드 레이어 */}
         <View style={styles.guideContainer} pointerEvents="none">
-          <View 
-            style={[
-              styles.guideBox, 
-              scanMode === "envelope" && styles.guideBoxEnvelope
-            ]} 
-          />
+          <View style={[styles.guideBox, scanMode === "envelope" && styles.guideBoxEnvelope]} />
           <Text style={styles.guideText}>
             {scanMode === "pill"
-              ? "약의 정보가 잘 보이도록\n칸 안에 맞춰 찍어주세요"
-              : "약봉투의 처방 정보가 잘 보이도록\n넓은 칸 안에 맞춰 찍어주세요"}
+              ? "약 정보가 잘 보이도록\n칸 안에 맞춰 촬영해 주세요"
+              : "약봉투의 처방 정보가 잘 보이도록\n칸 안에 맞춰 촬영해 주세요"}
           </Text>
         </View>
 
-        {/* 3. 시안 전면 컨트롤 뷰 */}
         <View style={styles.cameraOverlay} pointerEvents="box-none">
-          {/* 왼쪽 버튼: 약 목록 상자 폼 */}
-          <TouchableOpacity
-            style={styles.circleSubBtn}
-            onPress={() => router.push("/medicine-list")}
-          >
+          <TouchableOpacity style={styles.circleSubBtn} onPress={() => router.push("/medicine-list")}>
             <Ionicons name="document-text" size={28} color="#BBE6E8" />
           </TouchableOpacity>
 
-          {/* 중앙 버튼: 셔터 */}
-          <TouchableOpacity
-            style={styles.shutterButton}
-            onPress={takePictureAndSend}
-          >
+          <TouchableOpacity style={styles.shutterButton} onPress={takePictureAndSend}>
             <View style={styles.shutterButtonInner} />
           </TouchableOpacity>
 
-          {/* 오른쪽 버튼: 스캔 모드 전환 */}
-          <TouchableOpacity
-            style={styles.circleSubBtn}
-            onPress={toggleScanMode}
-          >
-            <Ionicons 
-              name={scanMode === "pill" ? "reader-outline" : "ellipse-outline"} 
-              size={28} 
-              color="#BBE6E8" 
+          <TouchableOpacity style={styles.circleSubBtn} onPress={toggleScanMode}>
+            <Ionicons
+              name={scanMode === "pill" ? "reader-outline" : "ellipse-outline"}
+              size={28}
+              color="#BBE6E8"
             />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 4. 하단 여백 바 */}
       <View style={styles.bottomBar} />
 
-      {/* AI 분석 결과 수정 및 확인용 팝업창 (Modal) */}
       <Modal
         animationType="slide"
-        transparent={true}
+        transparent
         visible={isEditModalVisible}
         onRequestClose={() => setIsEditModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            
-            {/* 인식 결과 확인 */}
             <Text style={styles.modalTitle}>
-              🔍 인식 결과 확인 및 수정 ({currentPillIndex + 1} / {scanResultsArray.length})
+              인식 결과 확인 및 수정 ({currentPillIndex + 1} / {scanResultsArray.length})
             </Text>
-            <Text style={styles.modalSubText}>텍스트가 부정확하다면 직접 터치해 수정해 주세요.</Text>
+            <Text style={styles.modalSubText}>텍스트가 부정확하면 직접 수정해 주세요.</Text>
 
-            {/* 약 이름 / 주요 증상 수정 칸 */}
             <Text style={styles.fieldLabel}>약 이름 / 주요 증상</Text>
             <TextInput
               style={styles.modalInput}
@@ -282,8 +258,7 @@ export default function ScanScreen() {
               placeholder="약 이름을 입력하세요"
             />
 
-            {/* 약효 및 효능 설명 수정 칸 */}
-            <Text style={styles.fieldLabel}>약효 및 효능 설명</Text>
+            <Text style={styles.fieldLabel}>효능 설명</Text>
             <TextInput
               style={[styles.modalInput, styles.multilineInput]}
               value={editedResult.extraInfo}
@@ -292,28 +267,20 @@ export default function ScanScreen() {
               placeholder="효능 정보를 입력하세요"
             />
 
-            {/* 유통기한 수정 칸 */}
             <Text style={styles.fieldLabel}>유통 기한</Text>
             <TextInput
               style={styles.modalInput}
               value={editedResult.expirationDate}
               onChangeText={(text) => setEditedResult({ ...editedResult, expirationDate: text })}
-              placeholder="예: 2026.12.31까지 (없으면 공백)"
+              placeholder="예: 2026.12.31"
             />
 
-            {/* 팝업창 하단 버튼 행 */}
             <View style={styles.modalButtonRow}>
-              <TouchableOpacity 
-                style={[styles.popupBtn, styles.cancelBtn]} 
-                onPress={() => setIsEditModalVisible(false)}
-              >
+              <TouchableOpacity style={[styles.popupBtn, styles.cancelBtn]} onPress={() => setIsEditModalVisible(false)}>
                 <Text style={styles.cancelBtnText}>취소</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={[styles.popupBtn, styles.saveBtn]} 
-                onPress={handleFinalSave}
-              >
+              <TouchableOpacity style={[styles.popupBtn, styles.saveBtn]} onPress={handleFinalSave}>
                 <Text style={styles.saveBtnText}>
                   {currentPillIndex < scanResultsArray.length - 1 ? "보관함에 저장" : "최종 완료"}
                 </Text>
@@ -325,6 +292,7 @@ export default function ScanScreen() {
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
@@ -361,6 +329,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     zIndex: 99,
+  },
+  loadingText: {
+    color: "#fff",
+    marginTop: 10,
   },
   guideContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -436,13 +408,20 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: "#fff",
   },
+  permissionText: {
+    textAlign: "center",
+    marginBottom: 20,
+  },
   permissionBtn: {
     backgroundColor: "#5C7A7C",
     paddingHorizontal: 30,
     paddingVertical: 15,
     borderRadius: 10,
   },
-
+  permissionBtnText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

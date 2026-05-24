@@ -1,33 +1,26 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { LinearGradient } from 'expo-linear-gradient';
-import { createClient } from "@supabase/supabase-js";
+import { LinearGradient } from "expo-linear-gradient";
 import {
-    Dimensions,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    Alert,
+  Alert,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { supabase } from "../supabaseClient";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const characterImg = require("../assets/images/char.png");
 
 export default function SignUpScreen() {
   const router = useRouter();
-
-  // 입력값 상태 관리
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [passwordCheck, setPasswordCheck] = useState("");
@@ -35,42 +28,48 @@ export default function SignUpScreen() {
   const [birth, setBirth] = useState("");
 
   const handleSignUp = async () => {
-    // id, password, birth으로 빈값 체크
-    if (!id || !password || !birth) {
-      Alert.alert("알림", "아이디, 비밀번호, 생년월일을 모두 입력해 주세요.");
+    if (!id || !password || !passwordCheck || !name || !birth) {
+      Alert.alert("알림", "모든 정보를 입력해 주세요.");
       return;
     }
 
-    // upabase 회원가입 시작
+    if (password !== passwordCheck) {
+      Alert.alert("알림", "비밀번호가 일치하지 않습니다.");
+      return;
+    }
+
     try {
-      // 수파베이스는 기본적으로 '이메일 형태'를 아이디로 받음 
-      // 일반 아이디(id) 뒤에 서비스 도메인을 임시로 붙여 이메일 형태로 변환해 가입
       const { data, error } = await supabase.auth.signUp({
-        email: `${id}@repill.com`, 
-        password: password,
+        email: `${id}@repill.com`,
+        password,
         options: {
           data: {
-            birthdate: birth, // 생년월일 추가 데이터는 metadata에 저장
+            login_id: id,
+            name,
+            birth,
           },
         },
       });
 
-      if (error) {
-        Alert.alert("회원가입 실패", error.message);
-      } else if (data) {
-        // 가입 성공 시 알림을 띄우고 메인 화면으로 이동
-        Alert.alert("성공", "회원가입이 완료되었습니다!", [
-          {
-            text: "확인",
-            onPress: () => {
-              router.replace("/"); 
-            },
-          },
-        ]);
-      }
-    } catch (error) {
-      console.error("수파베이스 통신 에러:", error);
-      Alert.alert("오류", "네트워크 통신 중 에러가 발생했습니다.");
+      if (error) throw error;
+      if (!data.user) throw new Error("회원 정보를 생성하지 못했습니다.");
+
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: data.user.id,
+        email: data.user.email,
+        login_id: id,
+        name,
+        birth: birth.replaceAll(".", "-"),
+      });
+
+      if (profileError) throw profileError;
+
+      Alert.alert("성공", "회원가입이 완료되었습니다.", [
+        { text: "확인", onPress: () => router.replace("/") },
+      ]);
+    } catch (error: any) {
+      console.error("signup error:", error);
+      Alert.alert("회원가입 실패", error.message ?? "회원가입 중 오류가 발생했습니다.");
     }
   };
 
@@ -79,83 +78,78 @@ export default function SignUpScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1 }}
     >
-
       <LinearGradient
-      colors={['#BBE6E8', '#FFEB8D']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{ flex: 1 }}
-    >   
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        bounces={false}
-        showsVerticalScrollIndicator={false}
+        colors={["#BBE6E8", "#FFEB8D"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ flex: 1 }}
       >
-        <View style={styles.container}>
-          <View style={styles.archBodyBackground} pointerEvents="none" />
-          <View style={styles.avatarContainer}>
-            <Image source={characterImg} style={styles.characterImage} />
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.container}>
+            <View style={styles.archBodyBackground} pointerEvents="none" />
+            <View style={styles.avatarContainer}>
+              <Image source={characterImg} style={styles.characterImage} />
+            </View>
+
+            <View style={styles.formContainer}>
+              <View style={styles.whiteInputWrapper}>
+                <Text style={styles.inputLabel}>아이디</Text>
+                <TextInput
+                  style={styles.input}
+                  value={id}
+                  onChangeText={setId}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.whiteInputWrapper}>
+                <Text style={styles.inputLabel}>비밀번호</Text>
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                />
+              </View>
+
+              <View style={styles.whiteInputWrapper}>
+                <Text style={styles.inputLabel}>비밀번호 확인</Text>
+                <TextInput
+                  style={styles.input}
+                  value={passwordCheck}
+                  onChangeText={setPasswordCheck}
+                  secureTextEntry
+                />
+              </View>
+
+              <View style={styles.mintBorderInputWrapper}>
+                <Text style={styles.mintBorderInputLabel}>이름</Text>
+                <TextInput style={styles.input} value={name} onChangeText={setName} />
+              </View>
+
+              <View style={styles.mintBorderInputWrapper}>
+                <Text style={styles.mintBorderInputLabel}>생년월일</Text>
+                <TextInput
+                  style={styles.input}
+                  value={birth}
+                  onChangeText={setBirth}
+                  placeholder="YYYY.MM.DD"
+                  placeholderTextColor="#A8C9CB"
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <TouchableOpacity style={styles.signUpBtn} onPress={handleSignUp}>
+                <Text style={styles.signUpBtnText}>회원가입</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.formContainer}>
-            <View style={styles.whiteInputWrapper}>
-              <Text style={styles.inputLabel}>아이디:</Text>
-              <TextInput
-                style={styles.input}
-                value={id}
-                onChangeText={setId}
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.whiteInputWrapper}>
-              <Text style={styles.inputLabel}>비밀번호:</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-            </View>
-
-            <View style={styles.whiteInputWrapper}>
-              <Text style={styles.inputLabel}>비밀번호 확인:</Text>
-              <TextInput
-                style={styles.input}
-                value={passwordCheck}
-                onChangeText={setPasswordCheck}
-                secureTextEntry
-              />
-            </View>
-
-            <View style={styles.mintBorderInputWrapper}>
-              <Text style={styles.mintBorderInputLabel}>사용자 이름:</Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-              />
-            </View>
-
-            <View style={styles.mintBorderInputWrapper}>
-              <Text style={styles.mintBorderInputLabel}>생년월일:</Text>
-              <TextInput
-                style={styles.input}
-                value={birth}
-                onChangeText={setBirth}
-                placeholder="YYYY.MM.DD"
-                placeholderTextColor="#A8C9CB"
-                keyboardType="numeric"
-              />
-            </View>
-
-            <TouchableOpacity style={styles.signUpBtn} onPress={handleSignUp}>
-              <Text style={styles.signUpBtnText}>회원가입</Text>
-            </TouchableOpacity>
-          </View>{" "}
-          {/* formContainer 닫기 */}
-        </View>
-      </ScrollView>
-      </LinearGradient> 
+        </ScrollView>
+      </LinearGradient>
     </KeyboardAvoidingView>
   );
 }
@@ -163,7 +157,6 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
-    backgroundColor: "transparnet",
   },
   container: {
     flex: 1,
@@ -171,7 +164,6 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     paddingTop: 50,
   },
-
   archBodyBackground: {
     position: "absolute",
     bottom: 0,
@@ -223,7 +215,6 @@ const styles = StyleSheet.create({
     color: "#6D8E91",
     marginRight: 8,
   },
-
   mintBorderInputWrapper: {
     width: "100%",
     backgroundColor: "#FFF",
@@ -247,7 +238,6 @@ const styles = StyleSheet.create({
     color: "#5C7A7C",
     marginRight: 8,
   },
-
   input: {
     flex: 1,
     fontSize: 15,

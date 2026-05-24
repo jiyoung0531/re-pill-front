@@ -1,160 +1,215 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  Alert,
   Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  Platform,
-  Image,
-  Modal,
 } from "react-native";
+import { supabase } from "../supabaseClient";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const targetIcon = require("../assets/images/target.png");
+const listIcon = require("../assets/images/list.png");
+const pillIcon = require("../assets/images/pill.png");
 
-const targetIcon = require('../assets/images/target.png');
-const listIcon = require('../assets/images/list.png');
-const pillIcon = require('../assets/images/pill.png');
+interface BinItem {
+  bin_name: string;
+  address: string;
+  distance: number;
+  latitude?: number;
+  longitude?: number;
+}
+
+const DEFAULT_LOCATION = {
+  latitude: 37.5665,
+  longitude: 126.978,
+};
+
+const getDistanceMeters = (
+  latitudeA: number,
+  longitudeA: number,
+  latitudeB: number,
+  longitudeB: number
+) => {
+  const earthRadius = 6371000;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(latitudeB - latitudeA);
+  const dLon = toRad(longitudeB - longitudeA);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(latitudeA)) * Math.cos(toRad(latitudeB)) * Math.sin(dLon / 2) ** 2;
+
+  return Math.round(earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+};
 
 export default function MapScreen() {
   const router = useRouter();
-
-  // 입력값 상태 관리
-  const [myLocation, setMyLocation] = useState("");
+  const [latitude, setLatitude] = useState(String(DEFAULT_LOCATION.latitude));
+  const [longitude, setLongitude] = useState(String(DEFAULT_LOCATION.longitude));
   const [targetLocation, setTargetLocation] = useState("");
-
+  const [binList, setBinList] = useState<BinItem[]>([]);
   const [infoVisible, setInfoVisible] = useState(false);
 
-  // [데모용] 내위치 자동입력 시뮬레이션
-  const handleAutoInput = () => {
-    setMyLocation("서울시 성북구 화랑로 81"); // 시연용 더미 주소 입력
-    setTargetLocation("성북구보건소 약품 수거함 (가장 가까움)");
-  };
-
-  // [데모용] 길찾기 버튼 클릭 시
-  const handleFindRoute = () => {
-    if (!myLocation.trim()) {
-      alert("내 위치를 먼저 입력하거나 자동입력 버튼을 눌러주세요!");
+  const fetchNearestBins = async (nextLatitude = Number(latitude), nextLongitude = Number(longitude)) => {
+    if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
+      Alert.alert("입력 오류", "위도와 경도를 숫자로 입력해 주세요.");
       return;
     }
-    alert(`📍 길찾기 시작\n출발: ${myLocation}\n도착: ${targetLocation || "가까운 수거함"}\n\n(백엔드 API 연동 시 실제 경로 안내로 전환됩니다.)`);
+
+    try {
+      const { data, error } = await supabase
+        .from("disposal_bins")
+        .select("bin_name,address,latitude,longitude");
+
+      if (error) throw error;
+
+      const formattedList = (data ?? [])
+        .map((item: any) => ({
+          bin_name: item.bin_name,
+          address: item.address,
+          latitude: item.latitude,
+          longitude: item.longitude,
+          distance: getDistanceMeters(nextLatitude, nextLongitude, item.latitude, item.longitude),
+        }))
+        .sort((a, b) => a.distance - b.distance);
+
+      setBinList(formattedList);
+      setTargetLocation(formattedList[0]?.bin_name ?? "");
+    } catch (error: any) {
+      console.error("fetch bins error:", error);
+      Alert.alert("오류", error.message ?? "수거함 목록을 불러오지 못했습니다.");
+    }
   };
 
-  // [데모용] 목록 버튼 클릭 시
+  const handleAutoInput = () => {
+    setLatitude(String(DEFAULT_LOCATION.latitude));
+    setLongitude(String(DEFAULT_LOCATION.longitude));
+    fetchNearestBins(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
+  };
+
+  const handleFindRoute = () => {
+    if (!targetLocation) {
+      Alert.alert("알림", "가까운 수거함을 먼저 조회해 주세요.");
+      return;
+    }
+
+    Alert.alert("길찾기", `목적지: ${targetLocation}`);
+  };
+
   const handleShowList = () => {
-    alert("인근 500m 내에 3개의 폐의약품 수거함(보건소, 주민센터, 지정약국)이 검색되었습니다.");
+    fetchNearestBins();
   };
 
   return (
     <View style={styles.mainContainer}>
-
-      {/* 상단 물음표 아이콘 */}
-      <TouchableOpacity 
-        style={styles.questionButton} 
-        onPress={() => setInfoVisible(true)} 
-      >
+      <TouchableOpacity style={styles.questionButton} onPress={() => setInfoVisible(true)}>
         <Text style={styles.questionText}>?</Text>
       </TouchableOpacity>
 
-      {/*  폐기법 요약 팝업창 (Modal) */}
       <Modal
         animationType="fade"
-        transparent={true}   
-        visible={infoVisible} // infoVisible이 true일 때만 화면에 뜸
+        transparent
+        visible={infoVisible}
         onRequestClose={() => setInfoVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalBody}>
-            <Image source={pillIcon}/>
-            <Text style={styles.modalTitle}>올바른 약 폐기 방법</Text>
-            
+            <Image source={pillIcon} />
+            <Text style={styles.modalTitle}>올바른 폐의약품 배출 방법</Text>
+
             <View style={styles.infoRow}>
               <Text style={styles.pillType}>알약</Text>
-              <Text style={styles.pillDesc}>포장재(블리스터)를 모두 제거하고 알약만 한곳에 모아서 배출해요.</Text>
+              <Text style={styles.pillDesc}>포장재를 제거하고 알약만 모아 배출해 주세요.</Text>
             </View>
 
             <View style={styles.infoRow}>
               <Text style={styles.pillType}>물약</Text>
-              <Text style={styles.pillDesc}>새지 않게 한 병에 최대한 모아서 단단히 밀봉 후 배출해요.</Text>
+              <Text style={styles.pillDesc}>새지 않게 원래 병에 모아 배출해 주세요.</Text>
             </View>
 
             <View style={styles.infoRow}>
               <Text style={styles.pillType}>가루약</Text>
-              <Text style={styles.pillDesc}>포장지를 뜯지 말고 그대로 모아서 배출해요.</Text>
+              <Text style={styles.pillDesc}>포장지를 뜯지 말고 그대로 모아 배출해 주세요.</Text>
             </View>
 
-            {/* 닫기 버튼 */}
-            <TouchableOpacity 
-              style={styles.closeButton} 
-              onPress={() => setInfoVisible(false)} 
-            >
+            <TouchableOpacity style={styles.closeButton} onPress={() => setInfoVisible(false)}>
               <Text style={styles.closeButtonText}>닫기</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-      
-      {/*  1. 지도 뷰  */}
-      {/* 실제 react-native-maps나 네이버/카카오 지도 API 연동 시 이 View 내부를 교체 */}
+
       <View style={styles.mapViewPlaceholder}>
-        <Text style={styles.mapDummyText}>🗺️ MAP AREA</Text>
-        <Text style={styles.mapSubDummyText}>(API 연동 시 실제 지도가 렌더링됩니다)</Text>
+        <Text style={styles.mapDummyText}>MAP AREA</Text>
+        <Text style={styles.mapSubDummyText}>
+          {binList[0] ? `가장 가까운 수거함: ${binList[0].bin_name}` : "수거함 목록을 조회해 주세요"}
+        </Text>
 
-        {/* 뒤로가기 버튼 */}
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>←</Text>
+          <Text style={styles.backButtonText}>‹</Text>
         </TouchableOpacity>
 
-        {/* ] 목록 버튼 */}
         <TouchableOpacity style={styles.floatingListBtn} onPress={handleShowList}>
-          <Image source={listIcon}/>
+          <Image source={listIcon} />
         </TouchableOpacity>
 
-        {/* 내위치 트래킹 아이콘 버튼 */}
         <TouchableOpacity style={styles.floatingLocationBtn} onPress={handleAutoInput}>
           <Image source={targetIcon} />
         </TouchableOpacity>
       </View>
 
-   
       <View style={styles.bottomSheetContainer}>
         <View style={styles.archBody}>
-          
-          {/* 인풋창 랩퍼 구역 */}
           <View style={styles.formContainer}>
-            
-            {/* 내위치 입력창 */}
-            <View style={styles.capsuleInputWrapper}>
-              <Text style={styles.inputLabel}>내위치:</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="지정 안 됨"
-                placeholderTextColor="#A8C9CB"
-                value={myLocation}
-                onChangeText={setMyLocation}
-              />
+            <View style={styles.coordinateRow}>
+              <View style={[styles.capsuleInputWrapper, styles.coordinateInput]}>
+                <Text style={styles.inputLabel}>위도</Text>
+                <TextInput
+                  style={styles.input}
+                  value={latitude}
+                  onChangeText={setLatitude}
+                  keyboardType="numeric"
+                  placeholder="37.5665"
+                  placeholderTextColor="#A8C9CB"
+                />
+              </View>
+
+              <View style={[styles.capsuleInputWrapper, styles.coordinateInput]}>
+                <Text style={styles.inputLabel}>경도</Text>
+                <TextInput
+                  style={styles.input}
+                  value={longitude}
+                  onChangeText={setLongitude}
+                  keyboardType="numeric"
+                  placeholder="126.978"
+                  placeholderTextColor="#A8C9CB"
+                />
+              </View>
             </View>
 
-            {/* 수거할 위치 입력창 */}
             <View style={styles.capsuleInputWrapper}>
-              <Text style={styles.inputLabel}>수거할 위치:</Text>
+              <Text style={styles.inputLabel}>수거함</Text>
               <TextInput
                 style={styles.input}
-                placeholder="내위치 입력 시 가까운 수거함 자동 매칭"
+                placeholder="가까운 수거함 자동 표시"
                 placeholderTextColor="#A8C9CB"
                 value={targetLocation}
                 onChangeText={setTargetLocation}
               />
             </View>
-
           </View>
 
-          {/* 하단 기능성 버튼 */}
           <View style={styles.buttonRow}>
             <TouchableOpacity style={styles.capsuleBtn} onPress={handleAutoInput}>
-              <Text style={styles.btnText}>내위치 자동입력</Text>
+              <Text style={styles.btnText}>내 위치</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.capsuleBtn} onPress={handleFindRoute}>
@@ -162,12 +217,23 @@ export default function MapScreen() {
             </TouchableOpacity>
           </View>
 
-          {/*텍스트 로고 */}
-          <Text style={styles.bottomLogoText}>RE:PILL</Text>
+          <FlatList
+            data={binList}
+            keyExtractor={(item) => `${item.bin_name}-${item.address}`}
+            style={styles.binList}
+            renderItem={({ item }) => (
+              <View style={styles.binItem}>
+                <Text style={styles.binName}>{item.bin_name}</Text>
+                <Text style={styles.binAddress}>{item.address}</Text>
+                <Text style={styles.binDistance}>{item.distance.toLocaleString()}m</Text>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.emptyText}>조회된 수거함이 없습니다.</Text>}
+          />
 
+          <Text style={styles.bottomLogoText}>RE:PILL</Text>
         </View>
       </View>
-
     </View>
   );
 }
@@ -175,12 +241,11 @@ export default function MapScreen() {
 const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
-    backgroundColor: "#BBE6E8", 
+    backgroundColor: "#BBE6E8",
   },
-  
   mapViewPlaceholder: {
     flex: 1,
-    backgroundColor: "#0F1012", 
+    backgroundColor: "#0F1012",
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
@@ -193,7 +258,7 @@ const styles = StyleSheet.create({
   },
   mapSubDummyText: {
     fontSize: 12,
-    color: "#333A42",
+    color: "#69717A",
     marginTop: 6,
   },
   backButton: {
@@ -213,7 +278,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   backButtonText: {
-    fontSize: 20,
+    fontSize: 26,
     color: "#5C7A7C",
     fontWeight: "bold",
   },
@@ -221,11 +286,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 20,
     left: 20,
-  },
-  floatingListBtnText: {
-    fontSize: 13,
-    fontWeight: "bold",
-    color: "#5C7A7C",
   },
   floatingLocationBtn: {
     position: "absolute",
@@ -243,14 +303,10 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 3,
   },
-  floatingLocationIcon: {
-    fontSize: 16,
-  },
-  
   bottomSheetContainer: {
     backgroundColor: "#BBE6E8",
     width: "100%",
-    paddingBottom: Platform.OS === "ios" ? 24 : 16, 
+    paddingBottom: Platform.OS === "ios" ? 24 : 16,
   },
   archBody: {
     backgroundColor: "#fff",
@@ -264,6 +320,13 @@ const styles = StyleSheet.create({
   formContainer: {
     width: "100%",
     marginBottom: 14,
+  },
+  coordinateRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  coordinateInput: {
+    flex: 1,
   },
   capsuleInputWrapper: {
     width: "100%",
@@ -293,7 +356,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     width: "100%",
-    marginBottom: 18,
+    marginBottom: 12,
   },
   capsuleBtn: {
     flex: 0.48,
@@ -308,6 +371,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "bold",
   },
+  binList: {
+    width: "100%",
+    maxHeight: 150,
+  },
+  binItem: {
+    borderTopWidth: 1,
+    borderTopColor: "#E8F3F4",
+    paddingVertical: 8,
+  },
+  binName: {
+    color: "#1F355F",
+    fontSize: 13,
+    fontWeight: "bold",
+  },
+  binAddress: {
+    color: "#5C7A7C",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  binDistance: {
+    color: "#FFA629",
+    fontSize: 12,
+    fontWeight: "bold",
+    marginTop: 2,
+  },
+  emptyText: {
+    color: "#7AA0A2",
+    fontSize: 12,
+    textAlign: "center",
+    paddingVertical: 12,
+  },
   bottomLogoText: {
     fontSize: 15,
     fontWeight: "900",
@@ -315,82 +409,81 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 4,
   },
-
   questionButton: {
-    position: 'absolute',
-    top: 50,          
-    right: 20,         
-    backgroundColor: '#BBE6E8', 
+    position: "absolute",
+    top: 50,
+    right: 20,
+    backgroundColor: "#BBE6E8",
     width: 35,
     height: 35,
     borderRadius: 17.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,       
-    elevation: 5,      
-    shadowColor: '#000', 
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 999,
+    elevation: 5,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
   },
   questionText: {
-    color: '#5C7A7C',
+    color: "#5C7A7C",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', 
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalBody: {
     width: SCREEN_WIDTH * 0.85,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 20,
     padding: 22,
-    alignItems: 'center',
+    alignItems: "center",
   },
   modalTitle: {
     fontSize: 19,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 20,
   },
   infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 15,
-    width: '100%',
+    width: "100%",
   },
   pillType: {
     width: 50,
-    fontWeight: 'bold',
-    color: '#5C7A7C',
-    backgroundColor: '#BBE6E8',
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#5C7A7C",
+    backgroundColor: "#BBE6E8",
+    textAlign: "center",
     paddingVertical: 4,
     borderRadius: 8,
     marginRight: 10,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   pillDesc: {
     flex: 1,
     fontSize: 15,
-    color: '#666',
+    color: "#666",
     lineHeight: 18,
   },
   closeButton: {
     marginTop: 15,
-    backgroundColor: '#5C7A7C',
+    backgroundColor: "#5C7A7C",
     paddingVertical: 10,
     paddingHorizontal: 30,
     borderRadius: 12,
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
   },
   closeButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
     fontSize: 15,
   },
 });
