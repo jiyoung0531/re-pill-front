@@ -22,6 +22,7 @@ const bottleIconPng = require("../assets/images/bottle.png");
 const powderIconPng = require("../assets/images/powder.png");
 const bellIcon = require("../assets/images/bell.png");
 
+
 type RoutineTime = "morning" | "lunch" | "dinner" | null;
 type PillType = "pill" | "bottle" | "powder" | "envelope";
 
@@ -62,7 +63,6 @@ const toPillData = (item: PillLogItemRow): PillData => ({
   routine_time: item.routine_time ?? null,
 });
 
-// 💡 [오류 수정] 오타가 났던 ${date} 부분을 명확하게 ${day} 변수로 바르게 고쳤습니다!
 const calculateRecommendedExpiry = (pillType: string): string => {
   const today = new Date();
 
@@ -93,6 +93,8 @@ export default function StorageScreen() {
   const [pills, setPills] = useState<PillData[]>([]);
   const [currentDateStr, setCurrentDateStr] = useState("");
   const [isManualModalVisible, setIsManualModalVisible] = useState(false);
+  const [duplicateMedicines, setDuplicateMedicines] = useState<string[]>([]);
+  const [showDuplicateBanner, setShowDuplicateBanner] = useState(false);//
   
   const [manualPill, setManualPill] = useState({
     symptoms: "",
@@ -125,10 +127,16 @@ export default function StorageScreen() {
         query = query.eq("PillLogs.user_id", user.id);
       }
 
-      const { data, error } = await query;
+    const { data, error } = await query;
       if (error) throw error;
 
-      setPills(((data ?? []) as unknown as PillLogItemRow[]).map(toPillData));
+      const parsedPills = ((data ?? []) as unknown as PillLogItemRow[]).map(toPillData);
+      setPills(parsedPills);
+
+      const names = parsedPills.map((p) => p.symptoms.trim());
+      const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+      setDuplicateMedicines([...new Set(duplicates)]);
+      setShowDuplicateBanner(duplicates.length > 0);
     } catch (error: any) {
       console.error("fetch storage error:", error);
       Alert.alert("오류", error.message ?? "약 보관함을 불러오지 못했습니다.");
@@ -351,6 +359,19 @@ export default function StorageScreen() {
         </TouchableOpacity>
       </View>
 
+     {showDuplicateBanner && (
+        <View style={styles.duplicateBanner}>
+          <Text style={styles.duplicateBannerIcon}>⚠️</Text>
+          <Text style={styles.duplicateBannerText} numberOfLines={1}>
+            동일한 의약품({duplicateMedicines.join(", ")})이 보관함에 있습니다.
+          </Text>
+
+          <TouchableOpacity onPress={() => setShowDuplicateBanner(false)} style={{ paddingHorizontal: 6 }}>
+            <Text style={{ color: "#FF5A5A", fontWeight: "bold", fontSize: 14 }}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <FlatList
         data={filteredPills}
         renderItem={renderItem}
@@ -416,7 +437,7 @@ export default function StorageScreen() {
         ListEmptyComponent={<Text style={styles.emptyText}>보관된 약이 없습니다.</Text>}
       />
 
-      {/* 1️⃣ 상세 정보 확인 모달창 */}
+      {/* 상세 정보 확인 모달창 */}
       <Modal
         animationType="fade"
         transparent
@@ -425,7 +446,6 @@ export default function StorageScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentBox}>
-            {/* 💥 [복구 완료] 첫 번째 사진 속 깨졌던 X 버튼 텍스트와 스타일 연결 복원! */}
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setModalVisible(false)}>
               <Text style={styles.modalCloseBtnText}>x</Text>
             </TouchableOpacity>
@@ -484,16 +504,15 @@ export default function StorageScreen() {
         </View>
       </Modal>
 
-      {/* 2️⃣ 수동 직접 등록 모달창 */}
+      {/* 수동 직접 등록 모달창 */}
       <Modal
-        animationType="fade" // 💥 [복구 완료] 두 번째 사진 피드백 반영! 대각선 팝업 느낌을 내는 fade 원본 뼈대로 롤백!
+        animationType="fade" 
         transparent
         visible={isManualModalVisible}
         onRequestClose={() => setIsManualModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentBox}>
-            {/* 💥 [추가 복구] 직접 등록 창에도 쉽게 닫을 수 있도록 우측 상단 X 단추 레이아웃을 똑같이 적용해 두었습니다! */}
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setIsManualModalVisible(false)}>
               <Text style={styles.modalCloseBtnText}>x</Text>
             </TouchableOpacity>
@@ -821,5 +840,29 @@ const styles = StyleSheet.create({
   activeTypeButtonText: {
     color: "#FFFFFF",
     fontWeight: "bold",
+  },
+  /* 🌟 styles 맨 아래에 쉼표(,) 찍고 붙여넣기 */
+  duplicateBanner: {
+    flexDirection: "row",
+    backgroundColor: "#FFF2F2",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 2,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#FFD6D6",
+  },
+  duplicateBannerIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  duplicateBannerText: {
+    color: "#FF5A5A",
+    fontSize: 12.5,
+    fontWeight: "bold",
+    flex: 1,
   },
 });

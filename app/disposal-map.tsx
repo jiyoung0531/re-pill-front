@@ -12,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Linking,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps"; 
 import * as Location from "expo-location"; 
@@ -109,8 +110,8 @@ useEffect(() => {
     return;
   }
 
-  try {
-    // 💥 [수정] 수파베이스 클라우드 펑션은 anon 키(입장권)를 헤더에 넣어줘야 문을 열어줍니다!
+    try {
+    console.log("현재 GPS:", nextLatitude, nextLongitude);
     const response = await fetch(
     `${SUPABASE_FUNCTIONS_BASE_URL}/functions/v1/find-pharmacy?lat=${nextLatitude}&lng=${nextLongitude}`,
   {
@@ -167,32 +168,69 @@ useEffect(() => {
     Alert.alert("오류", error.message ?? "수거함 목록을 불러오지 못했습니다.");
   }
 };
+  
+  const handleMoveToMyLocation = async () => {
+  try {
+    let currentPosition = await Location.getCurrentPositionAsync({});
+    const currentLat = currentPosition.coords.latitude;
+    const currentLng = currentPosition.coords.longitude;
 
-const handleMoveToNearestPharmacy = () => {
-    if (!binList || binList.length === 0) {
-      Alert.alert("알림", "가까운 수거함을 먼저 조회해 주세요.");
-      return;
-    }
-
-    const nearest = binList[0];
-
-    setTargetBin(nearest);
-    setTargetLocation(nearest.bin_name);
-
+    // 백엔드 호출 없이, 순수하게 지도 카메라만 내 현재 위치로 돌립니다!
     setMapRegion({
-      latitude: nearest.latitude,
-      longitude: nearest.longitude,
+      latitude: currentLat,
+      longitude: currentLng,
       latitudeDelta: 0.005,
       longitudeDelta: 0.005,
     });
-  };
+  } catch (error) {
+    Alert.alert("오류", "현재 위치를 가져오지 못했습니다.");
+  }
+};
 
+const handleMoveToNearestPharmacy = async () => {
+  try {
+   
+    let currentPosition = await Location.getCurrentPositionAsync({});
+    const currentLat = currentPosition.coords.latitude;
+    const currentLng = currentPosition.coords.longitude;
+
+    setLatitude(String(currentLat));
+    setLongitude(String(currentLng));
+
+    await fetchNearestBins(currentLat, currentLng);
+  } catch (error) {
+    console.error(error);
+  }
+};
   const handleFindRoute = () => {
     if (!targetBin) {
       Alert.alert("알림", "가까운 수거함을 먼저 조회해 주세요.");
       return;
     }
-    Alert.alert("길찾기", `목적지: ${targetBin.bin_name}`);
+
+    const { bin_name, latitude, longitude } = targetBin;
+
+    // 📱 아이폰, 안드로이드 맞춤형 지도 앱 브라우저 길찾기 링크 (100% 실행 보장 안전 패키지)
+    const url = Platform.select({
+      ios: `maps://?daddr=${latitude},${longitude}&dirflg=w`, // 아이폰 기본 지도 도보 길찾기
+      android: `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=walking`, // 안드로이드 구글맵 도보 길찾기
+    });
+
+    if (url) {
+      Linking.canOpenURL(url)
+        .then((supported) => {
+          if (supported) {
+            Linking.openURL(url);
+          } else {
+            // 웹 브라우저로 구글맵 열기 (백업용)
+            Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=walking`);
+          }
+        })
+        .catch((err) => {
+          console.error("길찾기 연동 실패:", err);
+          Alert.alert("오류", "길찾기 앱을 열 수 없습니다.");
+        });
+    }
   };
 
   const handleShowList = () => {
@@ -204,7 +242,6 @@ const handleMoveToNearestPharmacy = () => {
 
   return (
     <View style={styles.mainContainer}>
-      {/* ✂️ 우측 상단 물음표(?) 동그라미 버튼 코드를 삭제했습니다. */}
 
       <Modal
         animationType="fade"
@@ -269,7 +306,7 @@ const handleMoveToNearestPharmacy = () => {
           <Image source={listIcon} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.floatingLocationBtn} onPress={handleMoveToNearestPharmacy}>
+        <TouchableOpacity style={styles.floatingLocationBtn} onPress={handleMoveToMyLocation}>
           <Image source={targetIcon} />
         </TouchableOpacity>
       </View>
@@ -288,7 +325,7 @@ const handleMoveToNearestPharmacy = () => {
               />
             </View>
 
-            {/* 🆕 [수거함] 창 바로 밑에 [올바른 폐기 방법] 버튼 추가 */}
+            {/*  창 바로 밑에 [올바른 폐기 방법] 버튼 추가 */}
             <TouchableOpacity 
               style={styles.infoLinkButton} 
               onPress={() => setInfoVisible(true)}
@@ -299,7 +336,7 @@ const handleMoveToNearestPharmacy = () => {
 
           <View style={styles.buttonRow}>
             <TouchableOpacity style={styles.capsuleBtn} onPress={handleMoveToNearestPharmacy}>
-              <Text style={styles.btnText}>내 위치</Text>
+              <Text style={styles.btnText}>가까운 수거함</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.capsuleBtn} onPress={handleFindRoute}>

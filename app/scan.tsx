@@ -63,6 +63,7 @@ const calculateRecommendedExpiry = (pillType: string): string => {
   return `${year}.${month}.${day}`;
 };
 
+// 🌟 [수정 완료] 존재하지 않던 한국어 변수를 영문 매개변수명인 'pill'로 완벽 교체!
 const hasRecognizedMedicine = (pill: ScanResult): boolean => {
   const text = `${pill.symptoms ?? ""} ${pill.extraInfo ?? ""}`.trim();
   if (!text) return false;
@@ -72,6 +73,7 @@ const hasRecognizedMedicine = (pill: ScanResult): boolean => {
   );
 };
 
+// 🌟 [수정 완료] 존재하지 않던 한국어 변수를 영문 매개변수명인 'pill'로 완벽 교체!
 const getExpirationDateForResult = (pill: ScanResult): string => {
   if (pill.expirationDate?.trim()) return pill.expirationDate;
   if (!hasRecognizedMedicine(pill)) return "";
@@ -86,10 +88,10 @@ export default function ScanScreen() {
   const cameraRef = useRef<any>(null);
   const router = useRouter();
 
-  const [scanMode, setScanMode] = useState<ScanMode>("pill");
+
+  const [scanMode, setScanMode] = useState<ScanMode>("envelope");
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   
-  // 🌟 [부활!] 알약 정밀 식별을 위한 필수 상태값 그룹
   const [isPillIdentifyModalVisible, setIsPillIdentifyModalVisible] = useState(false);
   const [pillEngraving, setPillEngraving] = useState("");
   const [selectedPillShape, setSelectedPillShape] = useState<PillShape>("원형");
@@ -105,10 +107,6 @@ export default function ScanScreen() {
     warningInfo: "",
     expirationDate: "",
   });
-
-  const toggleScanMode = () => {
-    setScanMode((current) => (current === "pill" ? "envelope" : "pill"));
-  };
 
   const setResultForEditing = (pill: ScanResult) => {
     setEditedResult({
@@ -129,14 +127,13 @@ export default function ScanScreen() {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.5 });
       const formData = new FormData();
 
-      // 아까 맞춘 것처럼 백엔드 연동 Key 규격을 "image"로 통일합니다.
       formData.append("image", {
         uri: photo.uri,
         name: "photo.jpg",
         type: "image/jpeg",
       } as any);
 
-      // 💥 1. 낱개 알약 스캔 모드일 때 동작
+    
       if (scanMode === "pill") {
         const engravingResponse = await fetch(`${API_BASE_URL}/ocr/engraving`, {
           method: "POST",
@@ -149,15 +146,13 @@ export default function ScanScreen() {
 
         const engravingJson = await engravingResponse.json();
         
-        // 백엔드에서 받아온 글자를 칸에 심고 정밀 식별 팝업창 열기
         setPillEngraving(engravingJson.engraving ?? "");
         setSelectedPillShape("원형");
         setSelectedPillColor("흰색");
         setIsPillIdentifyModalVisible(true);
         return;
       }
-
-      // 💥 2. 기존 약봉투 스캔 모드일 때 동작
+      
       const response = await fetch(`${API_BASE_URL}/ocr/analyze`, {
         method: "POST",
         body: formData,
@@ -211,7 +206,6 @@ export default function ScanScreen() {
     }
   };
 
-  // 🌟 [부활!] 외형 매칭 완료 후 백엔드 조회 및 보관함 이동 함수
   const handleFinalPillIdentification = async () => {
     const engraving = pillEngraving.trim();
 
@@ -244,7 +238,6 @@ export default function ScanScreen() {
 
       setIsPillIdentifyModalVisible(false);
       
-      // 약 보관함 화면으로 진짜 마스터 데이터 전송
       router.push({
         pathname: "/medicine-list",
         params: {
@@ -314,7 +307,7 @@ export default function ScanScreen() {
       routine_time: null,
     });
 
-  if (itemError) throw itemError;
+    if (itemError) throw itemError;
 
     return { extraInfo, warning };
   };
@@ -384,14 +377,13 @@ export default function ScanScreen() {
         )}
 
         <View style={styles.guideContainer} pointerEvents="none">
-          <View style={[styles.guideBox, scanMode === "envelope" && styles.guideBoxEnvelope]} />
+          <View style={[styles.guideBox, styles.guideBoxEnvelope]} />
           <Text style={styles.guideText}>
-            {scanMode === "pill"
-              ? "약 정보가 잘 보이도록\n칸 안에 맞춰 촬영해 주세요"
-              : "약봉투의 처방 정보가 잘 보이도록\n칸 안에 맞춰 촬영해 주세요"}
+            약봉투의 처방 정보가 잘 보이도록{"\n"}칸 안에 맞춰 촬영해 주세요
           </Text>
         </View>
 
+        {/* 🌟 [수정 완료] 하단 셔터 레이어에서 알약 모드 전환 토글 버튼을 완전히 은닉하여 예외 대참사 사전 방지! */}
         <View style={styles.cameraOverlay} pointerEvents="box-none">
           <TouchableOpacity style={styles.circleSubBtn} onPress={() => router.push("/medicine-list")}>
             <Ionicons name="document-text" size={28} color="#BBE6E8" />
@@ -401,13 +393,8 @@ export default function ScanScreen() {
             <View style={styles.shutterButtonInner} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.circleSubBtn} onPress={toggleScanMode}>
-            <Ionicons
-              name={scanMode === "pill" ? "reader-outline" : "ellipse-outline"}
-              size={28}
-              color="#BBE6E8"
-            />
-          </TouchableOpacity>
+          {/* ⚖️ 좌측 버튼과의 완벽한 대칭 레이아웃 유지를 위한 더미 뷰 배치 */}
+          <View style={{ width: 44, height: 44 }} />
         </View>
       </View>
 
@@ -476,7 +463,7 @@ export default function ScanScreen() {
         </View>
       </Modal>
 
-      {/* 🌟 [부활!] 2. 낱개 알약 전용 정밀 외형 선택 모달 */}
+      {/* 🌟 2. 낱개 알약 전용 정밀 외형 선택 모달 (백엔드 구조 유지용) */}
       <Modal
         animationType="fade"
         transparent
@@ -485,7 +472,6 @@ export default function ScanScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            {/* 💥 우측 상단 절대 좌표 X 닫기 단추 디자인 완전 주입 */}
             <TouchableOpacity
               style={styles.modalCloseBtn}
               onPress={() => setIsPillIdentifyModalVisible(false)}
