@@ -16,11 +16,14 @@ import {
 import MapView, { Marker } from "react-native-maps"; 
 import * as Location from "expo-location"; 
 import { supabase } from "../supabaseClient";
+import { API_BASE_URL } from "../constants/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const targetIcon = require("../assets/images/target.png");
 const listIcon = require("../assets/images/list.png");
 const pillIcon = require("../assets/images/pill.png");
+const SUPABASE_FUNCTIONS_BASE_URL =
+  process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") || API_BASE_URL;
 
 interface BinItem {
   bin_name: string;
@@ -61,6 +64,8 @@ export default function MapScreen() {
   const [infoVisible, setInfoVisible] = useState(false);
   const [showList, setShowList] = useState(true);
 
+  const [targetBin, setTargetBin] = useState<BinItem | null>(null);
+
   const [mapRegion, setMapRegion] = useState({
     latitude: DEFAULT_LOCATION.latitude,
     longitude: DEFAULT_LOCATION.longitude,
@@ -68,16 +73,19 @@ export default function MapScreen() {
     longitudeDelta: 0.007,
   });
 
-  useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("권한 거부", "위치 권한을 허용해야 현재 위치 기준 수거함을 찾을 수 있습니다.");
-        fetchNearestBins(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
-        return;
-      }
+useEffect(() => {
+  (async () => {
+    // 1. 폰에 "위치 권한을 허용하시겠습니까?" 팝업을 강제로 띄우고 상태를 받아옵니다.
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    
+    if (status !== "granted") {
+      Alert.alert("권한 거부", "위치 권한을 허용해야 현재 위치 기준 수거함을 찾을 수 있습니다.");
+      fetchNearestBins(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
+      return;
+    }
 
-      let currentPosition = await Location.getCurrentPositionAsync({});
+    // 3. 사용자가 [허용]을 누르면 아래로 내려가 진짜 GPS 좌표를 구합니다.
+    let currentPosition = await Location.getCurrentPositionAsync({});
       const currentLat = currentPosition.coords.latitude;
       const currentLng = currentPosition.coords.longitude;
 
@@ -96,79 +104,95 @@ export default function MapScreen() {
   }, []);
 
   const fetchNearestBins = async (nextLatitude = Number(latitude), nextLongitude = Number(longitude)) => {
-    if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
-      Alert.alert("입력 오류", "위치 좌표가 올바르지 않습니다.");
-      return;
+  if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
+    Alert.alert("입력 오류", "위치 좌표가 올바르지 않습니다.");
+    return;
+  }
+
+  try {
+    // 💥 [수정] 수파베이스 클라우드 펑션은 anon 키(입장권)를 헤더에 넣어줘야 문을 열어줍니다!
+    const response = await fetch(
+    `${SUPABASE_FUNCTIONS_BASE_URL}/functions/v1/find-pharmacy?lat=${nextLatitude}&lng=${nextLongitude}`,
+  {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ""}`,
+    },
+  }
+);
+
+    if (!response.ok) {
+      throw new Error(`서버 응답 실패 (에러코드: ${response.status})`);
+    }
+    
+    const data = await response.json(); 
+    console.log("find-pharmacy response:", JSON.stringify(data, null, 2));
+
+    const pharmacyList = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.pharmacies)
+          ? data.pharmacies
+          : Array.isArray(data?.results)
+            ? data.results
+            : [];
+
+    // 백엔드가 주는 실제 데이터 가공
+    const formattedList = pharmacyList.map((item: any) => ({
+      bin_name: item.binName || item.bin_name || "수거함 약국", 
+      address: item.address || "주소 정보 없음",
+      latitude: parseFloat(item.latitude),
+      longitude: parseFloat(item.longitude),
+      distance: item.distanceKm ? Math.round(item.distanceKm * 1000) : (item.distance || 0), 
+    })).filter((item: BinItem) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude));
+
+    setBinList(formattedList);
+    setTargetLocation(formattedList[0]?.bin_name ?? "");
+    
+    if (formattedList.length > 0) {
+      setTargetBin(formattedList[0]); 
     }
 
-    try {
-      const { data, error } = await supabase
-        .from("disposal_bins")
-        .select("bin_name,address,latitude,longitude");
-
-      if (error) throw error;
-
-      console.log("=== [디버깅] 내 현재 위치 ===", nextLatitude, nextLongitude);
-      console.log("=== [디버깅] DB 원본 데이터 예시 ===", JSON.stringify(data?.slice(0, 3), null, 2));
-
-      const formattedList = (data ?? [])
-        .map((item: any) => {
-          const binLat = parseFloat(item.latitude);
-          const binLng = parseFloat(item.longitude);
-          const dist = getDistanceMeters(nextLatitude, nextLongitude, binLat, binLng);
-
-          return {
-            bin_name: item.bin_name,
-            address: item.address,
-            latitude: binLat,
-            longitude: binLng,
-            distance: dist,
-          };
-        })
-        .filter((item) => !isNaN(item.distance))
-        .sort((a, b) => a.distance - b.distance);
-
-      setBinList(formattedList);
-      setTargetLocation(formattedList[0]?.bin_name ?? "");
-
-      if (formattedList[0]) {
-        setMapRegion({
-          latitude: nextLatitude,
-          longitude: nextLongitude,
-          latitudeDelta: 0.007,
-          longitudeDelta: 0.007,
-        });
-      }
-    } catch (error: any) {
-      console.error("fetch bins error:", error);
-      Alert.alert("오류", error.message ?? "수거함 목록을 불러오지 못했습니다.");
+    if (formattedList[0]) {
+      setMapRegion({
+        latitude: nextLatitude,
+        longitude: nextLongitude,
+        latitudeDelta: 0.007,
+        longitudeDelta: 0.007,
+      });
     }
-  };
+  } catch (error: any) {
+    console.error("fetch bins error:", error);
+    Alert.alert("오류", error.message ?? "수거함 목록을 불러오지 못했습니다.");
+  }
+};
 
-  const handleAutoInput = async () => {
-    let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      setLatitude(String(DEFAULT_LOCATION.latitude));
-      setLongitude(String(DEFAULT_LOCATION.longitude));
-      fetchNearestBins(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
-      return;
-    }
-
-    let currentPosition = await Location.getCurrentPositionAsync({});
-    const currentLat = currentPosition.coords.latitude;
-    const currentLng = currentPosition.coords.longitude;
-
-    setLatitude(String(currentLat));
-    setLongitude(String(currentLng));
-    fetchNearestBins(currentLat, currentLng);
-  };
-
-  const handleFindRoute = () => {
-    if (!targetLocation) {
+const handleMoveToNearestPharmacy = () => {
+    if (!binList || binList.length === 0) {
       Alert.alert("알림", "가까운 수거함을 먼저 조회해 주세요.");
       return;
     }
-    Alert.alert("길찾기", `목적지: ${targetLocation}`);
+
+    const nearest = binList[0];
+
+    setTargetBin(nearest);
+    setTargetLocation(nearest.bin_name);
+
+    setMapRegion({
+      latitude: nearest.latitude,
+      longitude: nearest.longitude,
+      latitudeDelta: 0.005,
+      longitudeDelta: 0.005,
+    });
+  };
+
+  const handleFindRoute = () => {
+    if (!targetBin) {
+      Alert.alert("알림", "가까운 수거함을 먼저 조회해 주세요.");
+      return;
+    }
+    Alert.alert("길찾기", `목적지: ${targetBin.bin_name}`);
   };
 
   const handleShowList = () => {
@@ -230,6 +254,7 @@ export default function MapScreen() {
               description={bin.address}
               pinColor={index === 0 ? "orange" : "red"} 
               onPress={() => {
+                setTargetBin(bin);
                 setTargetLocation(bin.bin_name);
               }}
             />
@@ -244,7 +269,7 @@ export default function MapScreen() {
           <Image source={listIcon} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.floatingLocationBtn} onPress={handleAutoInput}>
+        <TouchableOpacity style={styles.floatingLocationBtn} onPress={handleMoveToNearestPharmacy}>
           <Image source={targetIcon} />
         </TouchableOpacity>
       </View>
@@ -273,7 +298,7 @@ export default function MapScreen() {
           </View>
 
           <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.capsuleBtn} onPress={handleAutoInput}>
+            <TouchableOpacity style={styles.capsuleBtn} onPress={handleMoveToNearestPharmacy}>
               <Text style={styles.btnText}>내 위치</Text>
             </TouchableOpacity>
 
@@ -288,11 +313,23 @@ export default function MapScreen() {
               keyExtractor={(item) => `${item.bin_name}-${item.address}`}
               style={styles.binList}
               renderItem={({ item }) => (
-                <View style={styles.binItem}>
+                <TouchableOpacity
+                  style={styles.binItem}
+                  onPress={() => {
+                    setTargetBin(item);
+                    setTargetLocation(item.bin_name);
+                    setMapRegion({
+                      latitude: item.latitude,
+                      longitude: item.longitude,
+                      latitudeDelta: 0.005,
+                      longitudeDelta: 0.005,
+                    });
+                  }}
+                >
                   <Text style={styles.binName}>{item.bin_name}</Text>
                   <Text style={styles.binAddress}>{item.address}</Text>
                   <Text style={styles.binDistance}>{item.distance.toLocaleString()}m</Text>
-                </View>
+                </TouchableOpacity>
               )}
               ListEmptyComponent={<Text style={styles.emptyText}>조회된 수거함이 없습니다.</Text>}
             />
