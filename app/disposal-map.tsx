@@ -203,46 +203,43 @@ const handleMoveToNearestPharmacy = async () => {
   }
 };
   const handleFindRoute = () => {
+    // 1. 방금 리스트에서 클릭한 수거함(targetBin)이 있는지 팩트체크!
     if (!targetBin) {
-      Alert.alert("알림", "가까운 수거함을 먼저 조회해 주세요.");
+      Alert.alert("안내", "아래 리스트에서 길을 찾을 수거함을 먼저 선택해 주세요!");
       return;
     }
 
-    const { bin_name, latitude, longitude } = targetBin;
+    const { latitude, longitude, bin_name } = targetBin;
 
-    // 📱 아이폰, 안드로이드 맞춤형 지도 앱 브라우저 길찾기 링크 (100% 실행 보장 안전 패키지)
-    const url = Platform.select({
-      ios: `maps://?daddr=${latitude},${longitude}&dirflg=w`, // 아이폰 기본 지도 도보 길찾기
-      android: `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=walking`, // 안드로이드 구글맵 도보 길찾기
-    });
+    // 2. iOS(아이폰)와 Android(갤럭시) 기기별 맞춤 지도 앱 주소 세팅
+    const iosUrl = `maps://app?daddr=${latitude},${longitude}&label=${encodeURIComponent(bin_name)}`;
+    const androidUrl = `geo:${latitude},${longitude}?q=${latitude},${longitude}(${encodeURIComponent(bin_name)})`;
+    const webUrl = `https://maps.google.com/?q=${latitude},${longitude}`;
 
-    if (url) {
-      Linking.canOpenURL(url)
-        .then((supported) => {
-          if (supported) {
-            Linking.openURL(url);
-          } else {
-            // 웹 브라우저로 구글맵 열기 (백업용)
-            Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=walking`);
-          }
-        })
-        .catch((err) => {
-          console.error("길찾기 연동 실패:", err);
-          Alert.alert("오류", "길찾기 앱을 열 수 없습니다.");
+    // 3. 기기 환경에 맞춰 네이티브 지도 앱 켜기 치트키
+    Platform.select({
+      ios: () => {
+        Linking.canOpenURL(iosUrl).then((supported) => {
+          Linking.openURL(supported ? iosUrl : webUrl);
         });
-    }
+      },
+      android: () => {
+        Linking.openURL(androidUrl).catch(() => Linking.openURL(webUrl));
+      },
+    })?.();
   };
 
-  const handleShowList = () => {
-    setShowList(!showList); 
-    if (!showList) {
-      fetchNearestBins(); 
-    }
-  };
+ const handleShowList = () => {
+  setShowList(!showList); 
+  if (!showList) {
+    fetchNearestBins(); 
+  }
+};
 
   return (
     <View style={styles.mainContainer}>
 
+      {/* 🧾 올바른 폐의약품 배출 방법 안내 모달창 구역 */}
       <Modal
         animationType="fade"
         transparent
